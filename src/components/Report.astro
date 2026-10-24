@@ -14,6 +14,9 @@ interface Props {
 const { note, mode } = Astro.props;
 const { title, date, cover, lang } = note.data;
 const subtitle = note.data.subtitle ?? [];
+// 웹에서 표시를 한 제목·부제는 올리기가 만든 HTML을 씀 (수정테이프로 가린 글자는 들어 있지 않음)
+const titleHtml = note.data.titleHtml;
+const subtitleHtml = note.data.subtitleHtml;
 const tags = note.data.tags ?? [];
 const { Content } = await render(note);
 
@@ -39,8 +42,14 @@ const age = Math.min(1, Math.max(0, (Date.now() - date.getTime()) / (AGE_YEARS *
   <div class="report__source">
     <p class="report__date"><time datetime={date.toISOString()}>{formatDate(date)}</time></p>
     <header class="report__head">
-      <h2 class="report__title">{mode === 'cover' ? <a class="report__open" href={noteUrl(note)}>{title}</a> : title}</h2>
-      {subtitle.map((line) => <p class="report__subtitle">{line}</p>)}
+      <h2 class="report__title">
+        {mode === 'cover'
+          ? <a class="report__open" href={noteUrl(note)}>{titleHtml ? <Fragment set:html={titleHtml} /> : title}</a>
+          : titleHtml ? <Fragment set:html={titleHtml} /> : title}
+      </h2>
+      {subtitleHtml
+        ? subtitleHtml.map((line) => <p class="report__subtitle" set:html={line} />)
+        : subtitle.map((line) => <p class="report__subtitle">{line}</p>)}
     </header>
     {cover && <Image src={cover} alt={title} widths={[640, 1280]} sizes="(max-width: 760px) 100vw, 610px" />}
     <Content />

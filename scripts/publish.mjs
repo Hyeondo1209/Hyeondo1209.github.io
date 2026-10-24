@@ -14,10 +14,15 @@ import { convertDocx, toNoteFile, slugify } from './word.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const INBOX = path.join(ROOT, '원고');
 const NOTES = path.join(ROOT, 'src', 'content', 'notes');
+const MARKS = path.join(INBOX, '.표시'); // 웹에서 한 표시와 날짜 (원고처럼 내 컴퓨터에만 둠)
 const PORT = 4322; // 미리보기 전용 (npm run dev 의 4321 과 겹치지 않게)
 const isWin = process.platform === 'win32';
 
-const say = (s = '') => console.log(s);
+let sayHook = null; // 올리는 중에는 브라우저 미리보기에도 같은 내용을 보여줌
+const say = (s = '') => {
+  console.log(s);
+  sayHook?.(s);
+};
 const line = () => say('─'.repeat(48));
 
 function today() {
@@ -41,10 +46,47 @@ const MIME = {
   '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.avif': 'image/avif', '.gif': 'image/gif',
   '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8',
 };
-function servePreview(dir, port) {
+const EDITOR_FILES = { '/__desk/desk-editor.js': 'desk-editor.js', '/__desk/marks-match.mjs': 'marks-match.mjs' };
+function servePreview(dir, port, api) {
   return new Promise((resolve) => {
     const server = http.createServer(async (req, res) => {
-      let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+      const u = new URL(req.url, 'http://x');
+      let p = decodeURIComponent(u.pathname);
+      // 표시하기 도구 (미리보기에서만)
+      if (EDITOR_FILES[p]) {
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end(await readFile(path.join(ROOT, 'scripts', EDITOR_FILES[p])));
+      }
+      if (p === '/__desk/status') {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end(JSON.stringify(api.status()));
+      }
+      if (p === '/__desk/decide' && req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        let ok = false;
+        try {
+          ok = api.decide(JSON.parse(body).answer === 'y' ? 'y' : 'n');
+        } catch {}
+        res.writeHead(ok ? 200 : 409, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ ok }));
+      }
+      if (p === '/__desk/marks') {
+        const slug = u.searchParams.get('slug') || '';
+        res.setHeader('cache-control', 'no-store');
+        if (req.method === 'POST') {
+          let body = '';
+          for await (const chunk of req) body += chunk;
+          let ok = false;
+          try {
+            ok = await api.save(slug, JSON.parse(body));
+          } catch {}
+          res.writeHead(ok ? 200 : 400, { 'content-type': 'application/json' });
+          return res.end(JSON.stringify({ ok }));
+        }
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify(await api.get(slug)));
+      }
       if (p.endsWith('/')) p += 'index.html';
       let file = path.join(dir, path.normalize(p));
       if (!file.startsWith(dir)) file = path.join(dir, '404.html');
@@ -52,8 +94,12 @@ function servePreview(dir, port) {
       let status = 200;
       if (!existsSync(file) || !statSync(file).isFile()) { file = path.join(dir, '404.html'); status = 404; }
       try {
-        const body = await readFile(file);
-        res.writeHead(status, { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream' });
+        let body = await readFile(file);
+        const type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+        if (type.startsWith('text/html')) {
+          body = body.toString('utf8').replace('</body>', '<script type="module" src="/__desk/desk-editor.js"></script></body>');
+        }
+        res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
         res.end(body);
       } catch {
         res.writeHead(404); res.end('not found');
@@ -87,6 +133,25 @@ async function existingNotes() {
   return { map, slugs };
 }
 
+/** 웹에서 한 표시: { date, marks: [{ id, type, quote, prefix, suffix }] } */
+async function loadMarks(docx) {
+  try {
+    return JSON.parse(await readFile(path.join(MARKS, docx + '.json'), 'utf8'));
+  } catch {
+    return { date: null, marks: [] };
+  }
+}
+async function saveMarks(docx, data) {
+  await mkdir(MARKS, { recursive: true });
+  const clean = {
+    date: /^\d{4}-\d{2}-\d{2}$/.test(data.date || '') ? data.date : null,
+    marks: (Array.isArray(data.marks) ? data.marks : [])
+      .filter((m) => m && ['hl', 'red', 'pencil', 'tape'].includes(m.type) && typeof m.quote === 'string' && m.quote.trim())
+      .map((m) => ({ id: String(m.id), type: m.type, quote: m.quote, prefix: String(m.prefix || ''), suffix: String(m.suffix || '') })),
+  };
+  await writeFile(path.join(MARKS, docx + '.json'), JSON.stringify(clean, null, 2), 'utf8');
+}
+
 async function convertAll() {
   await mkdir(INBOX, { recursive: true });
   const files = (await readdir(INBOX)).filter((f) => /\.docx$/i.test(f) && !f.startsWith('~$'));
@@ -100,7 +165,8 @@ async function convertAll() {
     const r = { file, warnings: [] };
     try {
       const buf = await readFile(path.join(INBOX, file));
-      const conv = await convertDocx(buf, { fileName: file });
+      const saved = await loadMarks(file);
+      const conv = await convertDocx(buf, { fileName: file, marks: saved.marks });
       const prev = map.get(file);
       let slug = conv.meta.slug || prev?.slug || slugify(file.replace(/\.docx$/i, ''));
       let n = 2;
@@ -124,7 +190,10 @@ async function convertAll() {
         results.push(r);
         continue;
       }
-      const date = conv.meta.date || prev?.date || today();
+      if (saved.date && conv.meta.date && saved.date !== conv.meta.date) {
+        conv.warnings.push(`원고의 "날짜:" 줄(${conv.meta.date}) 대신 미리보기에서 바꾼 날짜(${saved.date})를 써요.`);
+      }
+      const date = saved.date || conv.meta.date || prev?.date || today();
       const target = path.join(dir, 'index.md');
       const content = toNoteFile(conv, { date, docxName: file });
       const before = existsSync(target) ? await readFile(target, 'utf8') : null;
@@ -165,6 +234,30 @@ async function waitFor(url, ms) {
   return false;
 }
 
+/** 결과마다 새 글 / 고침 / 그대로 를 정함 (사이트에 올라간 것(git)과 비교) */
+function markStatus(results) {
+  const st = git(['status', '--porcelain', '--untracked-files=all', '--', 'src/content/notes']);
+  const changedPaths = (st.stdout || '').split('\n').filter(Boolean).map((l) => ({ code: l.slice(0, 2), file: l.slice(3).replace(/^"|"$/g, '') }));
+  for (const r of results) {
+    if (!r.slug || r.draft || r.status === '실패') continue;
+    const mine = changedPaths.filter((c) => c.file.startsWith(`src/content/notes/${r.slug}/`));
+    if (!mine.length) r.status = '그대로';
+    else if (mine.some((c) => c.file.endsWith('/index.md') && c.code.includes('?'))) r.status = '새 글';
+    else r.status = '고침';
+  }
+}
+
+const STATUS_TEXT = {
+  '새 글': '새 글 — 아직 사이트에 없어요',
+  고침: '고침 — 사이트에 있는 글이 바뀌어요',
+  그대로: '그대로 — 이미 사이트에 있고 바뀐 것 없어요',
+};
+
+function buildSite() {
+  const astro = path.join(ROOT, 'node_modules', 'astro', 'bin', 'astro.mjs');
+  return spawnSync(process.execPath, [astro, 'build'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+}
+
 async function main() {
   say();
   say('  Desk 올리기');
@@ -178,18 +271,9 @@ async function main() {
     return;
   }
 
-  const { results, orphans } = out;
-
-  // 사이트에 올라간 것(git)과 비교해서 새 글 / 고침 / 그대로 를 정함
-  const st = git(['status', '--porcelain', '--untracked-files=all', '--', 'src/content/notes']);
-  const changedPaths = (st.stdout || '').split('\n').filter(Boolean).map((l) => ({ code: l.slice(0, 2), file: l.slice(3).replace(/^"|"$/g, '') }));
-  for (const r of results) {
-    if (!r.slug || r.draft) continue;
-    const mine = changedPaths.filter((c) => c.file.startsWith(`src/content/notes/${r.slug}/`));
-    if (!mine.length) r.status = '그대로';
-    else if (mine.some((c) => c.file.endsWith('/index.md') && c.code.includes('?'))) r.status = '새 글';
-    else r.status = '고침';
-  }
+  let { results, orphans } = out;
+  markStatus(results);
+  const siteBase = (await siteUrl()) || '';
 
   for (const r of results) {
     if (r.status === '실패') {
@@ -197,11 +281,13 @@ async function main() {
       say(`    변환하지 못했어요: ${r.error}`);
       continue;
     }
-    const mark = r.draft ? (r.unpublished ? '초안: 사이트에서 내림' : '초안: 안 올라감') : r.status;
-    say(`· [${mark}] ${r.title}`);
-    say(`    ${r.file} → /notes/${r.slug}/`);
+    const mark = r.draft ? (r.unpublished ? '초안: 사이트에서 내림' : '초안: 안 올라감') : STATUS_TEXT[r.status] || r.status;
+    say(`· ${r.title}`);
+    say(`    ${mark}`);
+    say(`    원고: ${r.file}`);
+    if (!r.draft) say(`    주소: ${siteBase}/notes/${r.slug}/`);
     for (const w of r.warnings) say(`    ! ${w}`);
-    if (r.subtitle?.some((s) => /\b\d{8}\b/.test(s))) say('    ! 부제 줄에 학번처럼 보이는 숫자가 있어요. 공개해도 괜찮은지 확인하세요.');
+    if (r.subtitle?.some((s) => /\b\d{8}\b/.test(s))) say('    ! 부제 줄에 학번처럼 보이는 숫자가 있어요. 가리려면 미리보기에서 수정테이프를 붙이세요.');
   }
   for (const o of orphans) {
     say(`? 원고 폴더에 없는 글: /notes/${o.slug}/ (${o.docx})`);
@@ -214,10 +300,8 @@ async function main() {
     say('git 을 찾지 못했어요. Git 이 설치돼 있는지 확인하세요.');
     return;
   }
-  if (!status.stdout.trim()) {
-    say('사이트에 올릴 바뀐 내용이 없어요.');
-    return;
-  }
+  const nothingNew = !status.stdout.trim();
+  if (nothingNew) say('바뀐 원고는 없어요. 미리보기에서 표시하기만 할 수 있어요.');
 
   // 이번에 만든 변경을 되돌려서, 다음에 다른 글을 올릴 때 같이 올라가지 않게 함
   async function revert() {
@@ -234,10 +318,9 @@ async function main() {
 
   // 미리보기: 실제 배포와 똑같이 사이트를 새로 만들어서 보여줌
   say('사이트를 만드는 중... (30초쯤 걸려요)');
-  const astro = path.join(ROOT, 'node_modules', 'astro', 'bin', 'astro.mjs');
   await rm(path.join(ROOT, '.astro'), { recursive: true, force: true });
   await rm(path.join(ROOT, 'node_modules', '.astro'), { recursive: true, force: true });
-  const build = spawnSync(process.execPath, [astro, 'build'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const build = buildSite();
   if (build.status !== 0) {
     const log = `${build.stdout || ''}\n${build.stderr || ''}`.trim().split('\n').slice(-25).join('\n');
     say();
@@ -253,48 +336,136 @@ async function main() {
   const changed = results.find((r) => !r.draft && (r.status === '새 글' || r.status === '고침'));
   const local = `http://127.0.0.1:${PORT}`;
   const previewUrl = local + (changed ? `/notes/${changed.slug}/` : '/');
-  const server = await servePreview(path.join(ROOT, 'dist'), PORT);
+  let marksDirty = false;
+  const bySlug = new Map(results.filter((r) => r.slug && !r.draft && r.status !== '실패').map((r) => [r.slug, r.file]));
+
+  // 브라우저 미리보기에서 "올리기 / 올리지 않기" 를 고를 수 있게
+  const web = { phase: 'waiting', log: [], url: '' };
+  let decideFromWeb;
+  const fromWeb = new Promise((resolve) => (decideFromWeb = resolve));
+  const api = {
+    async get(slug) {
+      const docx = bySlug.get(slug);
+      if (!docx) return { editable: false, reason: '이 글은 Word 원고로<br>만든 글이 아니라서<br>표시할 수 없어요.' };
+      return { editable: web.phase === 'waiting', ...(await loadMarks(docx)) };
+    },
+    async save(slug, data) {
+      const docx = bySlug.get(slug);
+      if (!docx || web.phase !== 'waiting') return false;
+      await saveMarks(docx, data);
+      marksDirty = true;
+      return true;
+    },
+    status() {
+      const changes = results
+        .filter((r) => r.draft ? r.unpublished : r.status === '새 글' || r.status === '고침')
+        .map((r) => ({ kind: r.draft ? '내림' : r.status, title: r.title, url: r.draft ? '' : `/notes/${r.slug}/` }));
+      return { ...web, changes, marksDirty };
+    },
+    decide(answer) {
+      if (web.phase !== 'waiting') return false;
+      decideFromWeb({ answer, web: true });
+      return true;
+    },
+  };
+  const server = await servePreview(path.join(ROOT, 'dist'), PORT, api);
   if (server) {
     openInBrowser(previewUrl);
     say(`브라우저에서 미리보기를 확인하세요: ${previewUrl}`);
+    say('올릴지는 미리보기 오른쪽의 버튼으로 고르거나, 여기에 y / n 을 눌러도 돼요.');
   } else {
     say(`미리보기 창을 열지 못했어요(${PORT}번 자리가 이미 쓰이는 중). 사이트는 문제없이 만들어졌으니 올려도 괜찮아요.`);
   }
   say();
 
+  const ac = new AbortController();
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const answer = (await rl.question('이대로 사이트에 올릴까요? (y/n) ')).trim().toLowerCase();
+  const fromCmd = rl
+    .question('이대로 사이트에 올릴까요? (y/n) ', { signal: ac.signal })
+    .then((a) => ({ answer: a.trim().toLowerCase(), web: false }))
+    .catch(() => new Promise(() => {}));
+  const choice = await Promise.race([fromCmd, fromWeb]);
+  ac.abort();
   rl.close();
-  server?.close();
+  if (choice.web) console.log(choice.answer === 'y' ? 'y (미리보기에서 "올리기"를 눌렀어요)' : 'n (미리보기에서 "올리지 않기"를 눌렀어요)');
+  const yes = choice.answer === 'y' || choice.answer === 'ㅛ';
 
-  if (answer !== 'y' && answer !== 'ㅛ') {
-    await revert();
-    say();
-    say('올리지 않았어요. 사이트 파일도 원래대로 돌려놨어요.');
-    say('원고를 고친 뒤 올리기를 다시 실행하세요.');
-    return;
+  // 여기부터는 브라우저 미리보기에도 진행 상황을 보여줌
+  web.phase = 'working';
+  sayHook = (line) => web.log.push(line);
+  let outcome;
+  try {
+    outcome = await upload(yes);
+  } catch (e) {
+    say('문제가 생겼어요: ' + (e?.message || e));
+    outcome = 'error';
+  }
+  web.phase = outcome;
+  sayHook = null;
+  if (server) {
+    await new Promise((r) => setTimeout(r, 8000)); // 브라우저가 결과를 읽어갈 시간
+    server.close();
   }
 
-  const titles = results.filter((r) => r.status === '새 글' || r.status === '고침').map((r) => r.title);
-  const msg = titles.length ? `글: ${titles.join(', ')}` : '사이트 수정';
-  say();
-  git(['add', '-A'], { stdio: 'inherit' });
-  const c = git(['commit', '-m', msg], { stdio: 'inherit' });
-  if (c.status !== 0) {
-    say('커밋하지 못했어요. 위의 메시지를 확인하세요.');
-    return;
-  }
-  const p = git(['push'], { stdio: 'inherit' });
-  if (p.status !== 0) {
+  async function upload(yes) {
+    if (!yes) {
+      await revert();
+      say();
+      say('올리지 않았어요. 사이트 파일도 원래대로 돌려놨어요.');
+      if (marksDirty) say('미리보기에서 한 표시는 저장해 뒀어요. 다음에 올릴 때 같이 올라가요.');
+      say('원고를 고친 뒤 올리기를 다시 실행하세요.');
+      return 'cancelled';
+    }
+
+    if (marksDirty) {
+      // 미리보기에서 한 표시를 사이트 파일에 반영하고, 사이트가 문제없이 만들어지는지 다시 확인
+      say();
+      say('표시를 반영하는 중... (30초쯤 걸려요)');
+      ({ results } = await convertAll());
+      markStatus(results);
+      for (const r of results) for (const w of r.warnings || []) if (/붙을 곳을 잃었어요/.test(w)) say(`    ! ${r.title}: ${w}`);
+      if (git(['status', '--porcelain']).stdout.trim()) {
+        const b2 = buildSite();
+        if (b2.status !== 0) {
+          say(`${b2.stdout || ''}\n${b2.stderr || ''}`.trim().split('\n').slice(-25).join('\n'));
+          line();
+          say('표시를 반영하다가 문제가 생겨서 올리지 않았어요. 사이트 파일도 원래대로 돌려놨어요.');
+          say('위의 메시지를 캡처해서 Claude에게 보여주세요.');
+          await revert();
+          return 'error';
+        }
+      }
+    }
+    if (!git(['status', '--porcelain']).stdout.trim()) {
+      say();
+      say('사이트에 올릴 바뀐 내용이 없어요.');
+      return 'nothing';
+    }
+
+    const titles = results.filter((r) => r.status === '새 글' || r.status === '고침').map((r) => r.title);
+    const msg = titles.length ? `글: ${titles.join(', ')}` : '사이트 수정';
     say();
-    say('GitHub에 올리지 못했어요. 인터넷 연결이나 로그인을 확인하고 올리기를 다시 실행하세요.');
-    return;
+    say('GitHub에 올리는 중...');
+    git(['add', '-A'], { stdio: 'inherit' });
+    const c = git(['commit', '-m', msg], { stdio: 'inherit' });
+    if (c.status !== 0) {
+      say('커밋하지 못했어요. 검은 창의 메시지를 확인하세요.');
+      return 'error';
+    }
+    const p = git(['push'], { stdio: 'inherit' });
+    if (p.status !== 0) {
+      say();
+      say('GitHub에 올리지 못했어요. 인터넷 연결이나 로그인을 확인하고 올리기를 다시 실행하세요.');
+      return 'error';
+    }
+    say();
+    line();
+    say('올렸어요. 1~2분 뒤 사이트에 반영돼요.');
+    const first = results.find((r) => !r.draft && (r.status === '새 글' || r.status === '고침'));
+    web.url = siteBase + (first ? `/notes/${first.slug}/` : '/');
+    say(web.url);
+    return 'done';
   }
-  say();
-  line();
-  say('올렸어요. 1~2분 뒤 사이트에 반영돼요.');
-  const url = await siteUrl();
-  if (url && changed) say(`${url}/notes/${changed.slug}/`);
 }
 
 main().catch((e) => {

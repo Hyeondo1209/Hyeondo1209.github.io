@@ -12,6 +12,9 @@ const notes = defineCollection({
       title: z.string(),
       // 부제 줄들 (Word 원고에서 제목 아래 가운데 정렬 문단)
       subtitle: z.array(z.string()).default([]),
+      // 웹에서 표시(형광펜, 수정테이프 등)를 한 제목·부제. 올리기가 만들어 넣습니다.
+      titleHtml: z.string().optional(),
+      subtitleHtml: z.array(z.string()).optional(),
       date: z.coerce.date(),
       type: z.enum(['essay', 'paper', 'reading', 'photo', 'project']).default('essay'),
       // 책상 위 낱장에 보일 짧은 소개. 비우면 본문 앞부분을 씁니다.

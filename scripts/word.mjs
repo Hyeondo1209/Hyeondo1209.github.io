@@ -24,9 +24,14 @@
 //   그림                    → 그림
 //   수식 편집기             → 수식 (흔한 구조만. 안 되면 원고에 $...$ 로 직접)
 //   하이퍼링크              → 링크
+//
+// 웹에서 한 표시(형광펜, 빨간 펜, 연필, 수정테이프)는 원고 폴더의 .표시 폴더에 따로 저장되고,
+// 변환할 때 문장 인용 방식으로 다시 찾아 붙입니다(marks-match.mjs).
+// 수정테이프는 글자 자체를 빼고 폭만 남기므로, 가린 글자는 사이트 파일 어디에도 남지 않습니다.
 // ─────────────────────────────────────────────────────────────
 import JSZip from 'jszip';
 import { DOMParser } from '@xmldom/xmldom';
+import { findMark, blankOut } from './marks-match.mjs';
 
 const NS = {
   w: 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
@@ -68,6 +73,7 @@ function escLineStart(s) {
     .replace(/^(\s*)([-+])(\s)/, '$1\\$2$3')
     .replace(/^(\s*)(\d+)([.)])(\s|$)/, '$1$2\\$3$4');
 }
+const escHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const escAttr = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
 // ── 한글 → 로마자 (글 주소용, 단순 음절 단위) ─────────────────
@@ -186,10 +192,12 @@ function runFormat(r, paraStyleBold) {
   f.sub = va === 'subscript';
   return f;
 }
-const sameFmt = (a, b) => a.b === b.b && a.i === b.i && a.hl === b.hl && a.red === b.red && a.sup === b.sup && a.sub === b.sub;
+const FMT_KEYS = ['b', 'i', 'hl', 'red', 'sup', 'sub', 'link', 'pencil', 'tape', 'hlId', 'redId', 'pencilId', 'tapeId'];
+const sameFmt = (a, b) => FMT_KEYS.every((k) => (a[k] || false) === (b[k] || false));
+const dataM = (id) => (id ? ` data-m="${escAttr(id)}"` : '');
 
 /** 서식이 같은 글자 조각들을 HTML 태그로 감쌈 (한국어 문장부호 옆에서도 안전하도록 마크다운 기호 대신 태그) */
-function renderSegments(segs) {
+function renderSegments(segs, { html = false } = {}) {
   const merged = [];
   for (const s of segs) {
     const last = merged[merged.length - 1];
@@ -204,6 +212,12 @@ function renderSegments(segs) {
     }
     let t = s.text;
     if (!t) continue;
+    const f = s.f;
+    if (f.tape) {
+      // 수정테이프: 원래 글자는 내보내지 않음
+      out += `<span class="tape"${dataM(f.tapeId)} role="img" aria-label="가린 부분">${blankOut(t)}</span>`;
+      continue;
+    }
     const lead = t.match(/^\s*/)[0];
     const trail = t.match(/\s*$/)[0];
     let core = t.slice(lead.length, t.length - trail.length);
@@ -211,14 +225,15 @@ function renderSegments(segs) {
       out += t;
       continue;
     }
-    core = escInline(core);
-    const f = s.f;
+    core = html ? escHtml(core) : escInline(core);
     if (f.sup) core = `<sup>${core}</sup>`;
     if (f.sub) core = `<sub>${core}</sub>`;
     if (f.i) core = `<em>${core}</em>`;
     if (f.b) core = `<strong>${core}</strong>`;
-    if (f.red) core = `<span class="red-pen">${core}</span>`;
-    if (f.hl) core = `<mark>${core}</mark>`;
+    if (f.pencil) core = `<span class="pencil"${dataM(f.pencilId)}>${core}</span>`;
+    if (f.red) core = `<span class="red-pen"${dataM(f.redId)}>${core}</span>`;
+    if (f.hl) core = `<mark${dataM(f.hlId)}>${core}</mark>`;
+    if (f.link) core = `<a href="${escAttr(f.link)}">${core}</a>`;
     out += lead + core + trail;
   }
   return out;
@@ -312,7 +327,54 @@ function omml(el) {
 }
 
 // ── 변환 본체 ─────────────────────────────────────────────
-export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
+/**
+ * 웹 표시를 문단 조각들에 붙임. 글자 하나하나로 쪼갠 뒤 서식을 더하고,
+ * 나중에 renderSegments 가 같은 서식끼리 다시 합칩니다.
+ */
+function applyMarks(units, marks) {
+  const result = { applied: 0, lost: [] };
+  if (!marks?.length) return result;
+  for (const u of units) {
+    const out = [];
+    for (const x of u.segs) {
+      if (x.kind !== 'text') out.push(x);
+      else for (const ch of x.text) out.push({ kind: 'text', text: ch, f: x.f });
+    }
+    u.segs = out;
+  }
+  // 각 문단의 글자 → 조각 번호
+  const texts = [];
+  const index = [];
+  for (const u of units) {
+    let t = '';
+    const idx = [];
+    u.segs.forEach((x, i) => {
+      if (x.kind !== 'text') return;
+      for (let k = 0; k < x.text.length; k++) idx.push(i);
+      t += x.text;
+    });
+    texts.push(t);
+    index.push(idx);
+  }
+  for (const m of marks) {
+    if (!['hl', 'red', 'pencil', 'tape'].includes(m.type)) continue;
+    const hit = findMark(texts, m);
+    if (!hit) {
+      result.lost.push(m);
+      continue;
+    }
+    result.applied++;
+    const u = units[hit.unit];
+    const touched = new Set(index[hit.unit].slice(hit.start, hit.end));
+    for (const i of touched) {
+      const seg = u.segs[i];
+      seg.f = { ...seg.f, [m.type]: true, [m.type + 'Id']: m.id };
+    }
+  }
+  return result;
+}
+
+export async function convertDocx(buffer, { fileName = '원고.docx', marks = [] } = {}) {
   const zip = await JSZip.loadAsync(buffer);
   const read = async (path) => {
     const f = zip.file(path);
@@ -368,7 +430,7 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
     async function walk(node, link) {
       for (const n of kids(node)) {
         if (isW(n, 'r')) {
-          const f = runFormat(n, paraBold);
+          const f = { ...runFormat(n, paraBold), link };
           for (const c of kids(n)) {
             if (isW(c, 't')) segs.push({ kind: 'text', text: c.textContent, f });
             else if (isW(c, 'tab')) segs.push({ kind: 'text', text: ' ', f });
@@ -397,14 +459,7 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
         } else if (isW(n, 'hyperlink')) {
           const rid = n.getAttributeNS(NS.r, 'id') || n.getAttribute('r:id');
           const href = rid && rels[rid] ? rels[rid].target : '';
-          if (href) {
-            const inner = [];
-            const save = segs.length;
-            await walk(n, href);
-            const part = segs.splice(save);
-            inner.push(...part);
-            segs.push({ kind: 'raw', md: `<a href="${escAttr(href)}">${renderSegments(inner)}</a>` });
-          } else await walk(n, link);
+          await walk(n, href || link);
         } else if (isW(n, 'ins') || isW(n, 'smartTag') || isW(n, 'fldSimple') || isW(n, 'customXml') || isW(n, 'dir') || isW(n, 'bdo')) {
           await walk(n, link);
         } else if (isW(n, 'sdt')) {
@@ -419,7 +474,7 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
         // w:del(지운 글), w:pPr, 책갈피 등은 건너뜀
       }
     }
-    await walk(p);
+    await walk(p, null);
     return segs;
   }
   const plain = (segs) => segs.filter((s) => s.kind === 'text').map((s) => s.text).join('');
@@ -442,12 +497,8 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
           const cells = [];
           for (const tc of kids(tr).filter((c) => isW(c, 'tc'))) {
             const parts = [];
-            for (const p of kids(tc).filter((c) => isW(c, 'p'))) {
-              const s = await inlineSegs(p, { paraBold: false });
-              const md = renderSegments(s).trim();
-              if (md) parts.push(md);
-            }
-            cells.push(parts.join('<br>'));
+            for (const p of kids(tc).filter((c) => isW(c, 'p'))) parts.push({ segs: await inlineSegs(p, { paraBold: false }) });
+            cells.push(parts);
           }
           rows.push(cells);
         }
@@ -458,6 +509,17 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
     }
   }
   await collect(body);
+
+  // 각주 글자도 미리 모아둠 (웹 표시를 붙일 수 있게)
+  const noteParas = []; // 각주마다 [{ segs }]
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i];
+    const src = n.kind === 'f' ? fnDoc : enDoc;
+    const el = src && descendants(src, NS.w, n.kind === 'f' ? 'footnote' : 'endnote').find((x) => wAttr(x, 'id') === n.id);
+    const paras = [];
+    if (el) for (const p of kids(el).filter((c) => isW(c, 'p'))) paras.push({ segs: await inlineSegs(p, { paraBold: false }) });
+    noteParas.push(paras);
+  }
 
   // ── 2단계: 맨 위 머리 줄 (날짜, 인덱스, 주소, 초안) ──
   const meta = { date: null, tags: [], slug: null, draft: false, lang: null };
@@ -490,13 +552,13 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
   }
 
   // ── 3단계: 제목과 부제 ──
-  let title = '';
-  const subtitle = [];
+  let titleBlock = null;
+  const subBlocks = [];
   const firstP = blocks.findIndex((b) => b.type === 'p' && (b.text || b.hasRaw));
   if (firstP >= 0) {
     // 첫 문단이 제목. 이어지는 가운데 정렬 문단이나 부제 스타일 문단은 부제 줄.
     const centered = (x) => x && x.type === 'p' && x.props.jc === 'center' && x.props.heading === null;
-    title = blocks[firstP].text;
+    titleBlock = blocks[firstP];
     blocks.splice(0, firstP + 1);
     while (blocks.length) {
       const n = blocks[0];
@@ -506,11 +568,39 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
         continue;
       }
       if (centered(n) || n.props.heading === -1) {
-        subtitle.push(n.text);
+        subBlocks.push(n);
         blocks.shift();
       } else break;
     }
   }
+
+  // ── 3-1단계: 웹에서 한 표시 붙이기 ──
+  // 제목·부제는 Word 서식을 쓰지 않으므로 글자만 남기고 시작
+  const plainSegs = (segs) => segs.filter((x) => x.kind === 'text').map((x) => ({ kind: 'text', text: x.text, f: {} }));
+  if (titleBlock) titleBlock.segs = plainSegs(titleBlock.segs);
+  for (const b of subBlocks) b.segs = plainSegs(b.segs);
+  const units = []; // 표시를 붙일 수 있는 문단들 ({ segs })
+  if (titleBlock) units.push(titleBlock);
+  units.push(...subBlocks);
+  for (const b of blocks) {
+    if (b.type === 'p') units.push(b);
+    else if (b.type === 'table') for (const r of b.rows) for (const c of r) units.push(...c);
+  }
+  for (const paras of noteParas) units.push(...paras);
+  const markResult = applyMarks(units, marks);
+  for (const lost of markResult.lost) {
+    warnings.push(
+      lost.type === 'tape'
+        ? '웹에서 붙인 수정테이프 하나가 붙을 곳을 잃었어요(그 문장을 Word에서 고친 듯해요). 미리보기에서 다시 붙여주세요.'
+        : `웹에서 한 표시 하나가 붙을 곳을 잃었어요: "${lost.quote.slice(0, 20)}" — 미리보기에서 다시 칠해주세요.`,
+    );
+  }
+  const plainOf = (segs) => segs.filter((x) => x.kind === 'text').map((x) => (x.f.tape ? x.text.replace(/\S/g, '■') : x.text)).join('').replace(/\s+/g, ' ').trim();
+  const hasWebMark = (segs) => segs.some((x) => x.kind === 'text' && (x.f.hlId || x.f.redId || x.f.pencilId || x.f.tapeId));
+  let title = titleBlock ? plainOf(titleBlock.segs) : '';
+  const titleHtml = titleBlock && hasWebMark(titleBlock.segs) ? renderSegments(titleBlock.segs, { html: true }).trim() : null;
+  const subtitle = subBlocks.map((b) => plainOf(b.segs));
+  const subtitleHtml = subBlocks.some((b) => hasWebMark(b.segs)) ? subBlocks.map((b) => renderSegments(b.segs, { html: true }).trim()) : null;
   if (!title) title = fileName.replace(/\.docx$/i, '');
 
   // ── 4단계: 본문 블록 → 마크다운 ──
@@ -532,7 +622,8 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
       const rows = b.rows.filter((r) => r.length);
       if (!rows.length) continue;
       const w = Math.max(...rows.map((r) => r.length));
-      const cell = (c) => (c || ' ').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const cellMd = (parts) => (parts || []).map((x) => renderSegments(x.segs).trim()).filter(Boolean).join('<br>');
+      const cell = (c) => (cellMd(c) || ' ').replace(/\|/g, '\\|').replace(/\n/g, ' ');
       const line = (r) => '| ' + Array.from({ length: w }, (_, i) => cell(r[i])).join(' | ') + ' |';
       out.push([line(rows[0]), '| ' + Array(w).fill('---').join(' | ') + ' |', ...rows.slice(1).map(line)].join('\n'));
       continue;
@@ -603,30 +694,22 @@ export async function convertDocx(buffer, { fileName = '원고.docx' } = {}) {
 
   // ── 5단계: 각주 ──
   const noteMd = [];
-  for (const [i, n] of notes.entries()) {
-    const src = n.kind === 'f' ? fnDoc : enDoc;
-    const el = src && descendants(src, NS.w, n.kind === 'f' ? 'footnote' : 'endnote').find((x) => wAttr(x, 'id') === n.id);
-    let text = '';
-    if (el) {
-      const parts = [];
-      for (const p of kids(el).filter((c) => isW(c, 'p'))) {
-        const segs = await inlineSegs(p, { paraBold: false });
-        parts.push(renderSegments(segs).trim());
-      }
-      text = parts.filter(Boolean).join(' ');
-    }
+  for (const [i, paras] of noteParas.entries()) {
+    const text = paras.map((x) => renderSegments(x.segs).trim()).filter(Boolean).join(' ');
     noteMd.push(`[^${i + 1}]: ${text || ' '}`);
   }
 
   const bodyMd = out.join('\n\n') + (noteMd.length ? '\n\n' + noteMd.join('\n') : '') + '\n';
-  return { title, subtitle, meta, body: bodyMd, images, warnings };
+  return { title, subtitle, titleHtml, subtitleHtml, meta, body: bodyMd, images, warnings, marks: markResult };
 }
 
 /** 사이트 글 파일(frontmatter + 본문) 만들기 */
-export function toNoteFile({ title, subtitle, meta, body }, { date, docxName }) {
+export function toNoteFile({ title, subtitle, titleHtml, subtitleHtml, meta, body }, { date, docxName }) {
   const q = (s) => JSON.stringify(s);
   const lines = ['---', `title: ${q(title)}`];
   if (subtitle.length) lines.push(`subtitle: [${subtitle.map(q).join(', ')}]`);
+  if (titleHtml) lines.push(`titleHtml: ${q(titleHtml)}`);
+  if (subtitleHtml) lines.push(`subtitleHtml: [${subtitleHtml.map(q).join(', ')}]`);
   lines.push(`date: ${date}`);
   if (meta.tags.length) lines.push(`tags: [${meta.tags.map(q).join(', ')}]`);
   if (meta.lang === 'en') lines.push('lang: en');

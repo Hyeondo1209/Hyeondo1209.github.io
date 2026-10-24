@@ -66,6 +66,25 @@ strong { font-weight: bold; }
   text-decoration-skip-ink: none;
 }
 
+/* 연필 밑줄: 웹에서 그은 뜻 없는 밑줄 */
+.pencil {
+  text-decoration: underline;
+  text-decoration-color: #4a4a4a;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-skip-ink: none;
+}
+
+/* 수정테이프(검정): 가린 글자는 사이트 파일에 들어 있지 않고 폭만 남음 */
+.tape {
+  background: linear-gradient(to bottom, #232323, #0e0e0e 55%, #1a1a1a);
+  border-radius: 1px;
+  padding: 2px 1px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  white-space: pre;
+}
+
 /* 형광펜: Word의 형광펜 / 마크다운 ==이렇게== = 읽은 것(인용, 남의 글)에서 건진 곳. 줄 아래쪽만 칠함 */
 mark {
   color: inherit;

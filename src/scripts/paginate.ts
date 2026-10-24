@@ -235,6 +235,9 @@ function init() {
   const run = () => reports.forEach((r) => templates.has(r) && paginate(r, templates.get(r)!));
   document.documentElement.classList.add('is-paginated');
   run();
+  // 내 컴퓨터의 미리보기에서만 쓰는 표시하기 도구가 원본을 고치고 다시 나눌 수 있게
+  (window as any).__deskPages = { templates, run };
+  window.dispatchEvent(new Event('desk:paginated'));
 
   let lastW = document.documentElement.clientWidth;
   let t: number | undefined;
