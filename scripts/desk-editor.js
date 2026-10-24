@@ -36,7 +36,9 @@ const css = `
 .desk-panel{position:fixed;top:24px;z-index:999;width:220px;font:13px/20px GulimChe,'굴림체','Seorap Gulim',monospace;color:#000}
 .desk-panel a{color:#0000ee;text-decoration:underline;cursor:pointer}
 .desk-panel .desk-err{color:#d4202c}
-.desk-decide{margin-top:28px;padding-top:12px;border-top:1px solid #000}
+.desk-vis{margin-top:20px}
+.desk-vis:empty{display:none}
+.desk-decide{margin-top:20px;padding-top:12px;border-top:1px solid #000}
 .desk-log{margin-top:8px;font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-all}
 html.desk-on .sheet .report__date{cursor:pointer;outline:1px dashed #9a9a9a;outline-offset:3px}
 .desk-date-input{font:inherit;font-size:12px;border:1px solid #000;padding:0 2px;background:#fff}
@@ -110,11 +112,13 @@ async function start() {
   const panel = document.createElement('div');
   panel.className = 'desk-panel';
   const markBox = document.createElement('div');
+  const visBox = document.createElement('div');
+  visBox.className = 'desk-vis';
   const decideBox = document.createElement('div');
   decideBox.className = 'desk-decide';
-  panel.append(markBox, decideBox);
+  panel.append(markBox, visBox, decideBox);
   document.body.append(panel);
-  setupDecide(decideBox, () => {
+  setupDecide(decideBox, visBox, () => {
     // 올리기를 고르면 더는 표시하지 않음
     window.dispatchEvent(new Event('desk:locked'));
   });
@@ -387,7 +391,7 @@ async function start() {
 }
 
 // ── 사이트에 올리기 / 올리지 않기 ─────────────────────────────
-function setupDecide(box, onLock) {
+function setupDecide(box, visBox, onLock) {
   let st = null;
   let timer = null;
   let lockedOnce = false;
@@ -408,6 +412,7 @@ function setupDecide(box, onLock) {
     }
     if (st.phase !== 'waiting') lock();
     draw();
+    drawVis();
     if (st.phase !== 'waiting' && st.phase !== 'working') clearInterval(timer);
   }
   function draw() {
@@ -430,6 +435,56 @@ function setupDecide(box, onLock) {
     const log = st.log.filter((l) => l.trim() && !/^─+$/.test(l)).slice(-8).map(esc).join('\n');
     box.innerHTML = `${head}${link}${st.phase === 'done' || st.phase === 'cancelled' ? '' : `<div class="desk-log">${log}</div>`}`;
   }
+  // ── 글 보이기: 공개 / 목록에서 숨김 / 사이트에서 내림 ──
+  const VIS = {
+    public: '공개',
+    unlisted: '목록에서 숨김<br>(주소를 아는 사람만 열 수 있어요)',
+    hidden: '사이트에서 내리기로 함',
+  };
+  function drawVis() {
+    if (!st || st.phase !== 'waiting' || !st.notes) {
+      visBox.innerHTML = '';
+      return;
+    }
+    const link = (docx, value, text) => `<a data-docx="${esc(docx)}" data-vis="${value}">${text}</a>`;
+    const mine = slug && st.notes.find((n) => n.url === `/notes/${encodeURIComponent(slug)}/` || n.url === `/notes/${slug}/`);
+    if (mine) {
+      const v = mine.visibility;
+      const acts = {
+        public: [link(mine.docx, 'unlisted', '목록에서 숨기기'), link(mine.docx, 'hidden', '사이트에서 내리기')],
+        unlisted: [link(mine.docx, 'public', '다시 목록에 보이기'), link(mine.docx, 'hidden', '사이트에서 내리기')],
+        hidden: [link(mine.docx, 'public', '내리지 않기')],
+      }[v];
+      visBox.innerHTML = `<b>이 글은</b> ${VIS[v]}<br>${acts.join('<br>')}`;
+      return;
+    }
+    if (slug) {
+      visBox.innerHTML = '';
+      return;
+    }
+    // 첫 화면·글 목록: 숨기거나 내린 글을 여기서 다시 보이게
+    const rows = st.notes
+      .filter((n) => n.word || n.visibility !== 'public')
+      .map((n) =>
+        n.word
+          ? `· ${esc(n.title)}<br>&nbsp;&nbsp;초안(Word 원고의 "초안" 줄)`
+          : `· ${n.visibility === 'unlisted' ? `<a href="${n.url}">${esc(n.title)}</a>` : esc(n.title)}<br>&nbsp;&nbsp;${
+              n.visibility === 'hidden' ? '내림' : '목록에서 숨김'
+            } — ${link(n.docx, 'public', '다시 공개')}`,
+      );
+    visBox.innerHTML = rows.length ? `<b>숨기거나 내린 글</b><br>${rows.join('<br>')}` : '';
+  }
+  visBox.addEventListener('click', async (e) => {
+    const a = e.target.closest('a[data-vis]');
+    if (!a) return;
+    await fetch('/__desk/visibility', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ docx: a.dataset.docx, value: a.dataset.vis }),
+    }).catch(() => {});
+    refresh();
+  });
+
   box.addEventListener('click', async (e) => {
     const b = e.target.closest('button[data-dec]');
     if (!b) return;

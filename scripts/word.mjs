@@ -704,7 +704,7 @@ export async function convertDocx(buffer, { fileName = '원고.docx', marks = []
 }
 
 /** 사이트 글 파일(frontmatter + 본문) 만들기 */
-export function toNoteFile({ title, subtitle, titleHtml, subtitleHtml, meta, body }, { date, docxName }) {
+export function toNoteFile({ title, subtitle, titleHtml, subtitleHtml, meta, body }, { date, docxName, unlisted = false }) {
   const q = (s) => JSON.stringify(s);
   const lines = ['---', `title: ${q(title)}`];
   if (subtitle.length) lines.push(`subtitle: [${subtitle.map(q).join(', ')}]`);
@@ -714,6 +714,7 @@ export function toNoteFile({ title, subtitle, titleHtml, subtitleHtml, meta, bod
   if (meta.tags.length) lines.push(`tags: [${meta.tags.map(q).join(', ')}]`);
   if (meta.lang === 'en') lines.push('lang: en');
   if (meta.draft) lines.push('draft: true');
+  if (unlisted) lines.push('unlisted: true');
   lines.push(`docx: ${q(docxName)}`);
   lines.push('---', '', '<!-- 이 파일은 원고 폴더의 Word 파일에서 자동으로 만들어졌어요. 고치려면 Word 원고를 고치고 다시 올리세요. -->', '');
   return lines.join('\n') + body;

@@ -2,9 +2,9 @@
 // 글 목록: 레퍼런스의 list-of-posts 처럼 제목만 한 줄씩.
 import Base from '../layouts/Base.astro';
 import { SITE } from '../site.config';
-import { getNotes, noteUrl, url } from '../lib/notes';
+import { getListedNotes, noteUrl, url } from '../lib/notes';
 
-const notes = await getNotes();
+const notes = await getListedNotes();
 const tags = [...new Set(notes.flatMap((n) => n.data.tags))];
 ---
 <Base title="글 목록">

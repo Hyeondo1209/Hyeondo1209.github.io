@@ -30,6 +30,8 @@ const notes = defineCollection({
       lang: z.enum(['ko', 'en']).default('ko'),
       // true면 사이트에 나타나지 않습니다(쓰는 중인 글).
       draft: z.boolean().default(false),
+      // true면 첫 화면과 글 목록에서 빠지고 주소(링크)로만 열립니다. 비밀은 아닙니다.
+      unlisted: z.boolean().default(false),
       // Word 원고에서 만들어진 글이면 원고 파일 이름
       docx: z.string().optional(),
     }),

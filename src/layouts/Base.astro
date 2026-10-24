@@ -8,8 +8,9 @@ interface Props {
   title?: string;
   description?: string;
   lang?: 'ko' | 'en';
+  noindex?: boolean;
 }
-const { title, description = SITE.intro, lang = 'ko' } = Astro.props;
+const { title, description = SITE.intro, lang = 'ko', noindex = false } = Astro.props;
 const fullTitle = title ? `${title} | ${SITE.title}` : SITE.title;
 const fonts = url('/fonts/');
 // 굴림체가 없는 기기(맥, 폰)에서 대신 쓰는 조합 글꼴:
@@ -28,6 +29,7 @@ const fontFaces = `
     <meta name="viewport" content="width=1160" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
     <style is:inline set:html={fontFaces}></style>
     <link rel="icon" type="image/svg+xml" href={url('/favicon.svg')} />
   </head>

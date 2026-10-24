@@ -71,6 +71,17 @@ function servePreview(dir, port, api) {
         res.writeHead(ok ? 200 : 409, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ ok }));
       }
+      if (p === '/__desk/visibility' && req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        let ok = false;
+        try {
+          const d = JSON.parse(body);
+          ok = await api.visibility(String(d.docx), String(d.value));
+        } catch {}
+        res.writeHead(ok ? 200 : 400, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ ok }));
+      }
       if (p === '/__desk/marks') {
         const slug = u.searchParams.get('slug') || '';
         res.setHeader('cache-control', 'no-store');
@@ -143,13 +154,25 @@ async function loadMarks(docx) {
 }
 async function saveMarks(docx, data) {
   await mkdir(MARKS, { recursive: true });
+  const prev = await loadMarks(docx);
   const clean = {
+    visibility: prev.visibility || 'public',
     date: /^\d{4}-\d{2}-\d{2}$/.test(data.date || '') ? data.date : null,
     marks: (Array.isArray(data.marks) ? data.marks : [])
       .filter((m) => m && ['hl', 'red', 'pencil', 'tape'].includes(m.type) && typeof m.quote === 'string' && m.quote.trim())
       .map((m) => ({ id: String(m.id), type: m.type, quote: m.quote, prefix: String(m.prefix || ''), suffix: String(m.suffix || '') })),
   };
   await writeFile(path.join(MARKS, docx + '.json'), JSON.stringify(clean, null, 2), 'utf8');
+}
+
+/** 글 보이기: public(공개) / unlisted(목록에서 숨김, 링크로만) / hidden(사이트에서 내림) */
+const VISIBILITY = ['public', 'unlisted', 'hidden'];
+async function setVisibility(docx, value) {
+  if (!VISIBILITY.includes(value)) return false;
+  await mkdir(MARKS, { recursive: true });
+  const cur = await loadMarks(docx);
+  await writeFile(path.join(MARKS, docx + '.json'), JSON.stringify({ ...cur, visibility: value }, null, 2), 'utf8');
+  return true;
 }
 
 async function convertAll() {
@@ -182,7 +205,9 @@ async function convertAll() {
       }
 
       const dir = path.join(NOTES, slug);
-      if (conv.meta.draft) {
+      r.visibility = saved.visibility || 'public';
+      if (conv.meta.draft || r.visibility === 'hidden') {
+        r.hiddenBy = conv.meta.draft ? 'word' : 'web';
         // 초안은 파일을 만들지 않음 (공개 저장소에 올라가지 않도록). 이미 올렸던 글이면 내림.
         const was = existsSync(dir);
         if (was) await rm(dir, { recursive: true, force: true });
@@ -195,7 +220,7 @@ async function convertAll() {
       }
       const date = saved.date || conv.meta.date || prev?.date || today();
       const target = path.join(dir, 'index.md');
-      const content = toNoteFile(conv, { date, docxName: file });
+      const content = toNoteFile(conv, { date, docxName: file, unlisted: r.visibility === 'unlisted' });
       const before = existsSync(target) ? await readFile(target, 'utf8') : null;
 
       await mkdir(dir, { recursive: true });
@@ -247,6 +272,22 @@ function markStatus(results) {
   }
 }
 
+/** Word 원고와 상관없이 바뀐 것들 (직접 지운 글, 사이트 파일 등) */
+function otherChanges(results) {
+  const mine = new Set(results.filter((r) => r.slug).map((r) => r.slug));
+  const st = git(['status', '--porcelain', '--untracked-files=all']).stdout || '';
+  const removed = new Set();
+  let files = 0;
+  for (const l of st.split('\n').filter(Boolean)) {
+    const file = l.slice(3).replace(/^"|"$/g, '').split(' -> ').pop();
+    const m = file.match(/^src\/content\/notes\/([^/]+?)(?:\.md$|\/)/);
+    if (m && mine.has(m[1])) continue;
+    if (m && l.slice(0, 2).includes('D')) removed.add(m[1]);
+    else files++;
+  }
+  return { removed: [...removed], files };
+}
+
 const STATUS_TEXT = {
   '새 글': '새 글 — 아직 사이트에 없어요',
   고침: '고침 — 사이트에 있는 글이 바뀌어요',
@@ -281,7 +322,10 @@ async function main() {
       say(`    변환하지 못했어요: ${r.error}`);
       continue;
     }
-    const mark = r.draft ? (r.unpublished ? '초안: 사이트에서 내림' : '초안: 안 올라감') : STATUS_TEXT[r.status] || r.status;
+    const why = r.hiddenBy === 'web' ? '미리보기에서 내린 글' : '초안';
+    const mark = r.draft
+      ? r.unpublished ? `${why}: 사이트에서 내려가요` : `${why}: 사이트에 없어요`
+      : (STATUS_TEXT[r.status] || r.status) + (r.visibility === 'unlisted' ? ' (목록에서 숨김, 링크로만 열림)' : '');
     say(`· ${r.title}`);
     say(`    ${mark}`);
     say(`    원고: ${r.file}`);
@@ -336,31 +380,65 @@ async function main() {
   const changed = results.find((r) => !r.draft && (r.status === '새 글' || r.status === '고침'));
   const local = `http://127.0.0.1:${PORT}`;
   const previewUrl = local + (changed ? `/notes/${changed.slug}/` : '/');
-  let marksDirty = false;
+  let marksDirty = false; // 다시 변환해야 함 (표시, 날짜, 보이기 중 하나라도 바뀜)
+  let marksEdited = false; // 표시·날짜가 바뀜
   const bySlug = new Map(results.filter((r) => r.slug && !r.draft && r.status !== '실패').map((r) => [r.slug, r.file]));
 
   // 브라우저 미리보기에서 "올리기 / 올리지 않기" 를 고를 수 있게
   const web = { phase: 'waiting', log: [], url: '' };
+  const visStart = new Map(); // 이번에 보이기를 바꾼 원고 → 바꾸기 전 값 (올리지 않으면 되돌림)
+  const visNow = new Map();
+  const VIS_TEXT = { public: '다시 공개', unlisted: '목록에서 숨김', hidden: '사이트에서 내림' };
   let decideFromWeb;
   const fromWeb = new Promise((resolve) => (decideFromWeb = resolve));
   const api = {
     async get(slug) {
       const docx = bySlug.get(slug);
       if (!docx) return { editable: false, reason: '이 글은 Word 원고로<br>만든 글이 아니라서<br>표시할 수 없어요.' };
-      return { editable: web.phase === 'waiting', ...(await loadMarks(docx)) };
+      const r = results.find((x) => x.file === docx);
+      return { editable: web.phase === 'waiting', docx, ...(await loadMarks(docx)), visibility: visNow.get(docx) || r?.visibility || 'public' };
+    },
+    async visibility(docx, value) {
+      const r = results.find((x) => x.file === docx);
+      if (!r || web.phase !== 'waiting') return false;
+      if (!visStart.has(docx)) visStart.set(docx, r.visibility || 'public');
+      if (!(await setVisibility(docx, value))) return false;
+      visNow.set(docx, value);
+      marksDirty = true;
+      return true;
+    },
+    notes() {
+      return results
+        .filter((r) => r.slug && r.status !== '실패')
+        .map((r) => ({
+          docx: r.file,
+          title: r.title,
+          url: `/notes/${r.slug}/`,
+          visibility: visNow.get(r.file) || r.visibility || 'public',
+          word: r.hiddenBy === 'word',
+        }));
     },
     async save(slug, data) {
       const docx = bySlug.get(slug);
       if (!docx || web.phase !== 'waiting') return false;
       await saveMarks(docx, data);
       marksDirty = true;
+      marksEdited = true;
       return true;
     },
     status() {
       const changes = results
         .filter((r) => r.draft ? r.unpublished : r.status === '새 글' || r.status === '고침')
         .map((r) => ({ kind: r.draft ? '내림' : r.status, title: r.title, url: r.draft ? '' : `/notes/${r.slug}/` }));
-      return { ...web, changes, marksDirty };
+      for (const [docx, v] of visNow) {
+        if (v === visStart.get(docx)) continue;
+        const r = results.find((x) => x.file === docx);
+        changes.push({ kind: VIS_TEXT[v], title: r?.title || docx, url: '' });
+      }
+      const other = otherChanges(results);
+      for (const slug of other.removed) changes.push({ kind: '지움', title: slug, url: '' });
+      if (other.files) changes.push({ kind: '사이트 파일', title: `${other.files}개 바뀜`, url: '' });
+      return { ...web, changes, marksDirty: marksEdited, notes: api.notes() };
     },
     decide(answer) {
       if (web.phase !== 'waiting') return false;
@@ -410,9 +488,10 @@ async function main() {
   async function upload(yes) {
     if (!yes) {
       await revert();
+      for (const [docx, v] of visStart) await setVisibility(docx, v); // 내리기·숨기기는 되돌림
       say();
       say('올리지 않았어요. 사이트 파일도 원래대로 돌려놨어요.');
-      if (marksDirty) say('미리보기에서 한 표시는 저장해 뒀어요. 다음에 올릴 때 같이 올라가요.');
+      if (marksDirty) say('미리보기에서 한 표시는 저장해 뒀어요. 다음에 올릴 때 같이 올라가요. (내리기·숨기기는 취소했어요)');
       say('원고를 고친 뒤 올리기를 다시 실행하세요.');
       return 'cancelled';
     }
@@ -442,7 +521,11 @@ async function main() {
       return 'nothing';
     }
 
-    const titles = results.filter((r) => r.status === '새 글' || r.status === '고침').map((r) => r.title);
+    const titles = [
+      ...results.filter((r) => !r.draft && (r.status === '새 글' || r.status === '고침')).map((r) => r.title),
+      ...results.filter((r) => r.draft && r.unpublished).map((r) => `${r.title}(내림)`),
+      ...otherChanges(results).removed.map((slug) => `${slug}(지움)`),
+    ];
     const msg = titles.length ? `글: ${titles.join(', ')}` : '사이트 수정';
     say();
     say('GitHub에 올리는 중...');

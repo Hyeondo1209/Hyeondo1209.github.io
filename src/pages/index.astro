@@ -3,13 +3,14 @@
 import Base from '../layouts/Base.astro';
 import Report from '../components/Report.astro';
 import { SITE } from '../site.config';
-import { getNotes, url } from '../lib/notes';
+import { getListedNotes, url } from '../lib/notes';
 
-const notes = await getNotes();
+const notes = await getListedNotes();
 ---
 <Base>
   <p slot="head">{SITE.title}<br />글 목록: <a href={url('/list/')}>여기</a></p>
   <div class="reports">
+    {notes.length === 0 && <p>아직 책상 위에 놓인 글이 없어요.</p>}
     {notes.map((note) => <Report note={note} mode="cover" />)}
   </div>
 </Base>

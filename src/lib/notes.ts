@@ -4,7 +4,19 @@ export type Note = CollectionEntry<'notes'>;
 
 export async function getNotes(): Promise<Note[]> {
   const all = await getCollection('notes', ({ data }) => !data.draft);
-  return all.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+  // 글의 날짜(원고의 "날짜:" 줄, 미리보기에서 바꾼 날짜, 없으면 처음 올린 날) 기준으로 최신 글이 위.
+  // 오래된 글이 위로 오게 하려면 NEWEST_FIRST 를 false 로.
+  const NEWEST_FIRST = true;
+  return all.sort((a, b) => {
+    const d = a.data.date.getTime() - b.data.date.getTime();
+    if (d !== 0) return NEWEST_FIRST ? -d : d;
+    return a.data.title.localeCompare(b.data.title, 'ko');
+  });
+}
+
+/** 첫 화면과 글 목록에 보일 글 (목록에서 숨긴 글은 빠지고, 링크로만 열림) */
+export async function getListedNotes(): Promise<Note[]> {
+  return (await getNotes()).filter((n) => !n.data.unlisted);
 }
 
 /** 사이트 안 링크. base 설정(예: /seorap)을 자동으로 붙입니다. */
