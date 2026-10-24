@@ -24,8 +24,8 @@ const isNarrow = () => document.documentElement.clientWidth <= MOBILE_BREAKPOINT
 type Remainder = Element | null | 'all';
 
 const TEXT_LIKE = new Set(['P', 'LI', 'DD', 'DT', 'FIGCAPTION']);
-const CONTAINER = new Set(['BLOCKQUOTE', 'OL', 'UL', 'SECTION', 'DL']);
-const HEADING = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+const CONTAINER = new Set(['BLOCKQUOTE', 'OL', 'UL', 'SECTION', 'DL', 'DIV', 'HEADER']);
+const HEADING = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER']);
 
 function hasBlockChildren(el: Element) {
   return Array.from(el.children).some((c) => TEXT_LIKE.has(c.tagName) || CONTAINER.has(c.tagName));

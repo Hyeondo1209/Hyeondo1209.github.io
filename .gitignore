@@ -2,3 +2,6 @@ node_modules/
 dist/
 .astro/
 .DS_Store
+
+# Word 원고 (내 컴퓨터에만 둠)
+원고/

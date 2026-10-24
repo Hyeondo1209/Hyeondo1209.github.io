@@ -10,8 +10,10 @@ const notes = defineCollection({
   schema: ({ image }) =>
     z.object({
       title: z.string(),
+      // 부제 줄들 (Word 원고에서 제목 아래 가운데 정렬 문단)
+      subtitle: z.array(z.string()).default([]),
       date: z.coerce.date(),
-      type: z.enum(['essay', 'paper', 'reading', 'photo', 'project']),
+      type: z.enum(['essay', 'paper', 'reading', 'photo', 'project']).default('essay'),
       // 책상 위 낱장에 보일 짧은 소개. 비우면 본문 앞부분을 씁니다.
       description: z.string().optional(),
       // 논문/책 정보. 예: "존 버거, 『모든 것을 소중히 하라』, 열화당, 2008"
@@ -25,6 +27,8 @@ const notes = defineCollection({
       lang: z.enum(['ko', 'en']).default('ko'),
       // true면 사이트에 나타나지 않습니다(쓰는 중인 글).
       draft: z.boolean().default(false),
+      // Word 원고에서 만들어진 글이면 원고 파일 이름
+      docx: z.string().optional(),
     }),
 });
 
