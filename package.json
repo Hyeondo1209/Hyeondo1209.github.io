@@ -1,0 +1,22 @@
+{
+  "name": "seorap",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.4",
+    "astro": "^7.4.2",
+    "katex": "^0.19.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
+    "sharp": "^0.35.5"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.23.4"
+  }
+}

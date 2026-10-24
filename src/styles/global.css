@@ -1,0 +1,296 @@
+/* ─────────────────────────────────────────────
+   서랍 — 레퍼런스(0shaw0tt.github.io)의 형식을 따른 스타일
+   글자 14px, 줄 간격 24px. 모든 간격이 24px 격자에 맞춰져 있습니다.
+   ───────────────────────────────────────────── */
+
+:root {
+  /* 색 규칙: 인쇄된 것은 검정, 손으로 더한 것은 빨간 펜과 형광펜, 웹의 것(링크)은 파랑 */
+  --ink: #000;
+  --title: #000;
+  --subtitle: #000;
+  --link: #0000ee;
+  --red-pen: #d4202c;
+  --highlighter: #fff176;
+  --rule: #808080;
+
+  --font: GulimChe, '굴림체', 'Seorap Gulim', monospace;
+
+  /* 종이 */
+  --desk: #ffffff;          /* 종이 뒤 바탕: 흰색 */
+  --paper: #fdfdfc;         /* 갓 뽑은 복사지 */
+  --paper-old: #f5eedf;     /* 오래 보관된 종이 (최대로 바랬을 때) */
+}
+
+* { box-sizing: border-box; margin: 0; }
+
+body {
+  padding: 24px;
+  color: var(--ink);
+  background: var(--desk);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 24px;
+}
+
+a { color: var(--link); }
+img { display: block; max-width: 100%; height: auto; }
+
+/* 레퍼런스처럼: 종이는 왼쪽, 오른쪽은 비워둔 여백(나중에 메모나 메뉴 자리).
+   전체 덩어리(종이 794px + 오른쪽 여백 320px)는 화면 가운데 */
+.page { max-width: calc(794px + 320px); margin: 0 auto; }
+
+/* 머리말: 아직 정하지 않음. 레퍼런스처럼 가운데 정렬 두 줄만 */
+.site-head p { text-align: center; }
+
+h1 { font-size: 25px; line-height: 48px; padding: 12px 0; text-align: center; }
+h2, h3, h4 { font-size: 14px; line-height: 20px; padding: 15px 0 9px; }
+h2 { color: var(--title); }
+h3 { color: var(--subtitle); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+
+/* 빨간 펜: **이렇게** 굵게 쓴 곳 = 내가 쓴 글에서 내 주장, 결론처럼 중요한 곳 */
+strong {
+  font-weight: normal;
+  text-decoration: underline;
+  text-decoration-color: var(--red-pen);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-skip-ink: none;
+}
+
+/* 형광펜: ==이렇게== = 읽은 것(인용, 남의 글)에서 건진 중요한 곳. 줄 아래쪽 2/3만 칠함 */
+mark {
+  color: inherit;
+  background: linear-gradient(to bottom, transparent 30%, var(--highlighter) 30%, var(--highlighter) 92%, transparent 92%);
+  mix-blend-mode: multiply;
+  padding: 0 1px;
+}
+h4 { color: orange; }
+h2 a { color: inherit; text-decoration: none; }
+
+p { padding: 7px 0 17px; }
+
+blockquote {
+  padding-left: 64px;
+  padding-right: 120px;
+  text-align: justify;
+}
+
+figure { padding-bottom: 24px; }
+.report img { margin: 7px auto 17px; max-height: calc(var(--sheet-h, 1123px) * 0.6); width: auto; }
+
+ul, ol { padding: 7px 0 17px 3ch; }
+li p { padding: 0; }
+
+hr { margin: 0; border: 0; border-top: 1px inset var(--rule); }
+
+code { font-family: inherit; }
+pre { padding: 7px 0 17px; overflow-x: auto; }
+
+table { border-spacing: 0; margin: 7px 0 17px; }
+th { text-align: left; }
+th, td { padding: 7px 3ex 16px; vertical-align: top; border-bottom: 1px solid #333; }
+th:first-child, td:first-child { padding-left: 0; }
+
+.katex-display { overflow-x: auto; overflow-y: hidden; }
+
+/* ── 보고서와 A4 장 ─────────────────────────── */
+.reports { display: flex; flex-direction: column; align-items: flex-start; gap: 48px; padding-bottom: 48px; }
+
+.report {
+  --age: 0;
+  --sheet-w: 794px;                      /* A4 210mm @96dpi. 좁은 화면에서는 스크립트가 줄임 */
+  --sheet-h: 1123px;                     /* A4 297mm */
+  --pad: calc(var(--sheet-w) * 0.12);    /* 여백 약 25mm */
+  --paper-now: color-mix(in srgb, var(--paper-old) calc(var(--age) * 100%), var(--paper));
+  --sheet-shadow: 0 0.5px 1px rgb(0 0 0 / 0.06), 0 2px 6px rgb(0 0 0 / 0.05); /* 아주 옅은 그림자로만 종이 구분 */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-bottom: 48px;
+}
+.report__pages { display: flex; flex-direction: column; align-items: flex-start; gap: 32px; }
+
+.sheet,
+.report__source {
+  position: relative;
+  width: var(--sheet-w);
+  max-width: 100%;
+  background-color: var(--paper-now);
+  box-shadow: var(--sheet-shadow);
+  padding: var(--pad) var(--pad) calc(var(--pad) * 1.15);
+}
+.sheet { height: var(--sheet-h); }
+.sheet__body { height: 100%; overflow: hidden; }
+.sheet__body > :first-child { margin-top: 0; }
+.sheet--long { height: auto; }
+.sheet--long .sheet__body { height: auto; overflow: visible; }
+/* 폰에서 실제 A4를 통째로 축소하는 방식 */
+.report.is-shrunk .report__pages { zoom: var(--shrink); }
+
+/* 쪽 번호: - 1 - */
+.sheet__folio {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--pad) * 0.45);
+  text-align: center;
+  font-size: 12px;
+  color: #444;
+}
+
+/* 복사지의 아주 미세한 결 (임시. 나중에 직접 스캔한 종이로 교체) */
+.sheet::after,
+.report__source::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: calc(0.05 + var(--age) * 0.05);
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 두 장 이상: 첫 장 왼쪽 위에 호치키스 (임시 CSS. 나중에 실사 스캔으로 교체) */
+.report.is-stapled .sheet:first-child::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--pad) * 0.28);
+  top: calc(var(--pad) * 0.42);
+  width: 44px;
+  height: 4px;
+  border-radius: 1px;
+  background: linear-gradient(to bottom, #f4f4f4, #9a9ea3 45%, #6d7176 55%, #c9ccd0);
+  box-shadow: 0 1px 1.5px rgb(0 0 0 / 0.35);
+  transform: rotate(-45deg);
+  z-index: 2;
+}
+
+/* 둘째 장부터: 앞장을 넘긴 흔적으로 왼쪽 위 모서리가 접힘 (임시 CSS) */
+.report[data-mode='full'] .sheet:not(:first-child) {
+  --fold: 44px;
+  clip-path: polygon(var(--fold) 0, 100% 0, 100% 100%, 0 100%, 0 var(--fold));
+}
+.report[data-mode='full'] .sheet:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--fold) + 4px);
+  height: calc(var(--fold) + 4px);
+  z-index: 2;
+  background:
+    /* 접혀 넘어온 종이 뒷면: 접힌 선 쪽이 조금 더 어둡고, 끝으로 갈수록 밝아짐 */
+    linear-gradient(to bottom right, transparent 50%, rgb(255 255 255 / 0.7) 50%, rgb(0 0 0 / 0.10) calc(50% + 1px), rgb(0 0 0 / 0.04) 100%) 0 0 / var(--fold) var(--fold) no-repeat,
+    /* 접힌 종이가 만드는 그림자 */
+    linear-gradient(to bottom right, transparent 50%, rgb(0 0 0 / 0.07) 50%, rgb(0 0 0 / 0) 100%) 2px 2px / var(--fold) var(--fold) no-repeat,
+    linear-gradient(to bottom right, transparent 50%, rgb(0 0 0 / 0.05) 50%, rgb(0 0 0 / 0) 100%) 4px 4px / var(--fold) var(--fold) no-repeat;
+}
+
+/* 첫 화면: 뒷장이 있으면 종이가 겹쳐 보임 */
+.report[data-mode='cover'].is-stapled .sheet {
+  box-shadow:
+    var(--sheet-shadow),
+    5px 5px 0 -0.5px var(--paper-now), 5px 5px 0 0 rgb(0 0 0 / 0.08),
+    10px 10px 0 -0.5px var(--paper-now), 10px 10px 0 0 rgb(0 0 0 / 0.07);
+}
+.report[data-mode='cover'][data-pages='2'] .sheet {
+  box-shadow: var(--sheet-shadow), 5px 5px 0 -0.5px var(--paper-now), 5px 5px 0 0 rgb(0 0 0 / 0.08);
+}
+/* 첫 화면: 종이 전체를 누르면 그 보고서로 */
+.report[data-mode='cover'] .report__open::after { content: ''; position: absolute; inset: 0; z-index: 1; }
+.report[data-mode='cover'] .flags { z-index: 3; }
+
+/* 날짜: 첫 장 오른쪽 위에 작게 */
+.report__date {
+  position: absolute;
+  top: calc(var(--pad) * 0.5);
+  right: var(--pad);
+  padding: 0;
+  font-size: 12px;
+  color: #444;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 각주: 본문 끝에 구분선 아래로 */
+.report .footnotes { border-top: 1px inset var(--rule); font-size: 13px; margin-top: 7px; }
+
+/* 장을 넘어가며 잘린 문단: 잘린 앞부분의 마지막 줄도 양끝 정렬 */
+blockquote .is-split, blockquote.is-split { text-align-last: justify; }
+.is-split { padding-bottom: 0; }
+.is-continued { padding-top: 0; }
+li.is-continued { list-style: none; }
+
+/* ── 인덱스 (임시: CSS로 그린 것. 나중에 실제 스캔 이미지로 교체) ── */
+/* 글 오른쪽 가장자리에 붙어서 바깥 여백으로 삐져나옴.
+   multiply 합성이라 겹친 부분 아래 글자가 비쳐 보임 */
+.flags {
+  position: absolute;
+  top: calc(var(--pad) * 0.9);
+  right: -86px;
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 1;
+}
+.flag {
+  --c: 250 222 60;
+  display: block;
+  width: 116px;
+  height: 26px;
+  padding: 0 8px 0 36px;
+  font-size: 12px;
+  line-height: 26px;
+  color: #000;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  mix-blend-mode: multiply;
+  /* 왼쪽 30px: 종이에 붙는 반투명 부분, 나머지: 진한 색 끝 */
+  background:
+    linear-gradient(to bottom, rgb(255 255 255 / 0.35), rgb(255 255 255 / 0) 40%, rgb(0 0 0 / 0.04)),
+    linear-gradient(to right, rgb(var(--c) / 0.28) 0 30px, rgb(var(--c) / 0.85) 30px);
+  border-radius: 1px 3px 3px 1px;
+  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.12);
+  transform: rotate(var(--tilt, -0.6deg));
+}
+.flags li:nth-child(2n) .flag { --tilt: 0.5deg; margin-left: 4px; }
+.flags li:nth-child(3n) .flag { --tilt: -0.2deg; margin-left: -3px; }
+.flag:hover { filter: saturate(1.3); }
+.flag--yellow { --c: 250 222 60; }
+.flag--pink   { --c: 247 120 160; }
+.flag--blue   { --c: 96 170 240; }
+.flag--green  { --c: 120 210 110; }
+.flag--orange { --c: 250 160 60; }
+
+
+.footnotes ol { padding: 7px 0 17px 3ch; }
+.footnotes p { padding: 0; display: inline; }
+.data-footnote-backref { text-decoration: none; }
+
+/* 본문 속 각주 번호: [1] */
+sup a[data-footnote-ref] {
+  font-size: 13px;
+  line-height: 13px;
+  color: var(--ink);
+  text-decoration: none;
+}
+sup a[data-footnote-ref]::before { content: '['; }
+sup a[data-footnote-ref]::after { content: ']'; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* 좁은 화면: 오른쪽 여백을 거두고 인용 들여쓰기를 줄임 */
+@media (max-width: 760px) {
+  body { padding: 16px; }
+  .report { --pad: calc(var(--sheet-w) * 0.075); }
+  .flags { right: -10px; }
+  .flag { width: 84px; }
+  .report__pages h2:first-child { padding-right: 64px; }
+  blockquote { padding-left: 24px; padding-right: 0; }
+}

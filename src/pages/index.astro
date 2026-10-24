@@ -1,0 +1,15 @@
+---
+// 첫 화면(임시): 보고서마다 첫 장만. 뒷장이 있으면 겹친 종이로 표시.
+import Base from '../layouts/Base.astro';
+import Report from '../components/Report.astro';
+import { SITE } from '../site.config';
+import { getNotes, url } from '../lib/notes';
+
+const notes = await getNotes();
+---
+<Base>
+  <p slot="head">{SITE.title}<br />글 목록: <a href={url('/list/')}>여기</a></p>
+  <div class="reports">
+    {notes.map((note) => <Report note={note} mode="cover" />)}
+  </div>
+</Base>

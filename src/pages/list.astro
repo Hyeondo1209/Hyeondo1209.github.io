@@ -1,0 +1,31 @@
+---
+// 글 목록: 레퍼런스의 list-of-posts 처럼 제목만 한 줄씩.
+import Base from '../layouts/Base.astro';
+import { SITE } from '../site.config';
+import { getNotes, noteUrl, url } from '../lib/notes';
+
+const notes = await getNotes();
+const tags = [...new Set(notes.flatMap((n) => n.data.tags))];
+---
+<Base title="글 목록">
+  <p slot="head">{SITE.title}<br />첫 화면으로: <a href={url('/')}>여기</a></p>
+  <p>
+    {notes.map((n) => (
+      <>
+        <a href={noteUrl(n)} lang={n.data.lang}>{n.data.title}</a><br />
+      </>
+    ))}
+  </p>
+  {tags.map((t) => (
+    <section id={t}>
+      <h3>{t}</h3>
+      <p>
+        {notes.filter((n) => n.data.tags.includes(t)).map((n) => (
+          <>
+            <a href={noteUrl(n)} lang={n.data.lang}>{n.data.title}</a><br />
+          </>
+        ))}
+      </p>
+    </section>
+  ))}
+</Base>

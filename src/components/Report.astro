@@ -1,0 +1,44 @@
+---
+// 보고서 한 편. 서버에서는 글 전체를 한 덩어리로 내보내고,
+// 화면에서 src/scripts/paginate.ts 가 A4 장으로 나눕니다.
+// 스크립트가 꺼진 환경에서는 한 장의 긴 종이로 그대로 보입니다.
+import { render } from 'astro:content';
+import { Image } from 'astro:assets';
+import { flagColor } from '../site.config';
+import { formatDate, noteUrl, url, type Note } from '../lib/notes';
+
+interface Props {
+  note: Note;
+  mode: 'full' | 'cover';
+}
+const { note, mode } = Astro.props;
+const { title, date, cover, lang, tags } = note.data;
+const { Content } = await render(note);
+
+// 종이 바램: 글이 오래될수록 0에서 1로. 4년이면 가장 많이 바램. (화면에서 오늘 날짜로 다시 계산)
+const AGE_YEARS = 4;
+const age = Math.min(1, Math.max(0, (Date.now() - date.getTime()) / (AGE_YEARS * 365.25 * 864e5)));
+---
+<article
+  class="report"
+  id={mode === 'full' ? note.id : `cover-${note.id}`}
+  lang={lang}
+  data-mode={mode}
+  data-date={date.toISOString()}
+  style={`--age:${age.toFixed(3)}`}
+>
+  {tags.length > 0 && (
+    <ul class="flags" aria-label="인덱스">
+      {tags.map((t) => (
+        <li><a class={`flag flag--${flagColor(t)}`} href={url(`/list/#${encodeURIComponent(t)}`)}>{t}</a></li>
+      ))}
+    </ul>
+  )}
+  <div class="report__source">
+    <p class="report__date"><time datetime={date.toISOString()}>{formatDate(date)}</time></p>
+    <h2>{mode === 'cover' ? <a class="report__open" href={noteUrl(note)}>{title}</a> : title}</h2>
+    {cover && <Image src={cover} alt={title} widths={[640, 1280]} sizes="(max-width: 760px) 100vw, 610px" />}
+    <Content />
+  </div>
+  <div class="report__pages"></div>
+</article>

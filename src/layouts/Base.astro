@@ -1,0 +1,54 @@
+---
+import 'katex/dist/katex.min.css';
+import '../styles/global.css';
+import { SITE } from '../site.config';
+import { url } from '../lib/notes';
+
+interface Props {
+  title?: string;
+  description?: string;
+  lang?: 'ko' | 'en';
+}
+const { title, description = SITE.intro, lang = 'ko' } = Astro.props;
+const fullTitle = title ? `${title} | ${SITE.title}` : SITE.title;
+const fonts = url('/fonts/');
+// 굴림체가 없는 기기(맥, 폰)에서 대신 쓰는 조합 글꼴:
+// 한글은 백묵 굴림, 영문과 숫자는 한글의 절반 폭인 나눔고딕코딩
+const fontFaces = `
+@font-face { font-family: 'Seorap Gulim'; src: url('${fonts}nanum-gothic-coding-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212; font-display: swap; }
+@font-face { font-family: 'Seorap Gulim'; src: url('${fonts}baekmuk-gulim.woff2') format('woff2');
+  unicode-range: U+1100-11FF, U+3000-303F, U+3130-318F, U+AC00-D7A3; font-display: swap; }`;
+---
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <!-- 폰에서도 데스크톱 화면(A4 + 오른쪽 여백)을 통째로 축소해서 보여줌. 손가락으로 확대해서 읽음 -->
+    <meta name="viewport" content="width=1160" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <style is:inline set:html={fontFaces}></style>
+    <link rel="icon" type="image/svg+xml" href={url('/favicon.svg')} />
+  </head>
+  <body>
+    <div class="page">
+      <header class="site-head">
+        <slot name="head" />
+      </header>
+      <main>
+        <slot />
+      </main>
+      <script is:inline>
+        // 사이트를 다시 올리지 않아도 오늘 날짜 기준으로 종이가 바래도록
+        document.querySelectorAll('.report[data-date]').forEach(function (el) {
+          var y = (Date.now() - new Date(el.dataset.date).getTime()) / (4 * 365.25 * 864e5);
+          el.style.setProperty('--age', Math.min(1, Math.max(0, y)).toFixed(3));
+        });
+      </script>
+      <script>
+        import '../scripts/paginate.ts';
+      </script>
+    </div>
+  </body>
+</html>
