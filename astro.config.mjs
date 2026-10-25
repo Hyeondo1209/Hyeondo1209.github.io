@@ -16,7 +16,7 @@ import remarkHighlight from './src/lib/remark-highlight.mjs';
 //   site: 'https://<아이디>.github.io',  base: '/seorap'
 // ─────────────────────────────────────────────────────────────
 export default defineConfig({
-  site: 'https://hyeondo1209.github.io',
+  site: 'https://kim-hyeondo.github.io',
   base: '/',
   trailingSlash: 'always',
   markdown: {
