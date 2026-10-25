@@ -12,6 +12,6 @@ export async function getStaticPaths() {
 
 const { note } = Astro.props as { note: Note };
 ---
-<Base title={note.data.title} description={excerpt(note, 150)} lang={note.data.lang} noindex={note.data.unlisted} here="note">
+<Base title={note.data.title} description={excerpt(note, 150)} lang={note.data.lang} noindex={note.data.unlisted} here="note" published={note.data.date}>
   <Report note={note} mode="full" />
 </Base>

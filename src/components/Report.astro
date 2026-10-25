@@ -22,6 +22,8 @@ const { Content } = await render(note);
 
 // 종이 바램: 글이 오래될수록 0에서 1로. 4년이면 가장 많이 바램. (화면에서 오늘 날짜로 다시 계산)
 const AGE_YEARS = 4;
+// 글 페이지에서는 보고서 제목이 그 페이지의 맨 위 제목(h1). 첫 화면에서는 여러 보고서 중 하나라 h2
+const Title = mode === 'full' ? 'h1' : 'h2';
 const age = Math.min(1, Math.max(0, (Date.now() - date.getTime()) / (AGE_YEARS * 365.25 * 864e5)));
 ---
 <article
@@ -42,11 +44,11 @@ const age = Math.min(1, Math.max(0, (Date.now() - date.getTime()) / (AGE_YEARS *
   <div class="report__source">
     <p class="report__date"><time datetime={date.toISOString()}>{formatDate(date)}</time></p>
     <header class="report__head">
-      <h2 class="report__title">
+      <Title class="report__title">
         {mode === 'cover'
           ? <a class="report__open" href={noteUrl(note)}>{titleHtml ? <Fragment set:html={titleHtml} /> : title}</a>
           : titleHtml ? <Fragment set:html={titleHtml} /> : title}
-      </h2>
+      </Title>
       {subtitleHtml
         ? subtitleHtml.map((line) => <p class="report__subtitle" set:html={line} />)
         : subtitle.map((line) => <p class="report__subtitle">{line}</p>)}

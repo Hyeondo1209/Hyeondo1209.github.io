@@ -1,11 +1,14 @@
 // 사이트 전체에 쓰이는 이름과 소개 문구. 여기만 고치면 모든 페이지에 반영됩니다.
 export const SITE = {
-  title: 'Desk',
+  // 탭 제목·검색 결과·링크 미리보기에 쓰이는 사이트 이름
+  title: 'Hyeondo Kim의 desk',
+  // 첫 화면 탭 제목 (한글 이름으로도 검색되게)
+  homeTitle: 'Hyeondo Kim (김현도)의 desk',
   owner: '김현도',
   // 머리말 가운데: "Hyeondo Kim의 desk" — 이름을 누르면 소개 페이지(/about/)로
   ownerEn: 'Hyeondo Kim',
   // 검색 결과나 링크 미리보기에 나오는 한 줄 소개
-  intro: '김현도의 글, 논문 노트, 독서 노트.',
+  intro: '김현도(Hyeondo Kim)의 글, 논문 노트, 독서 노트.',
 };
 
 // 인덱스(포스트잇) 색. 다섯 가지 색을 돌려 씁니다.

@@ -41,6 +41,11 @@ export function formatDate(d: Date): string {
 export function excerpt(note: Note, max = 120): string {
   if (note.data.description) return note.data.description;
   const text = (note.body ?? '')
+    .replace(/<!--[\s\S]*?-->/g, ' ') // 자동 생성 안내 주석
+    .replace(/<aside[\s\S]*?<\/aside>/g, ' ') // 여백 메모 묶음 (본문이 아님)
+    .replace(/<[^>]+>/g, ' ') // 남은 HTML 태그 (메모 표시, 줄 묶음 등)
+    .replace(/&(nbsp|#160|#xa0);/gi, ' ')
+    .replace(/&[a-z]+;|&#x?[0-9a-f]+;/gi, ' ')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/\$\$[\s\S]*?\$\$/g, ' ')
     .replace(/\$[^$\n]+\$/g, ' ')

@@ -8,6 +8,7 @@ import { getListedNotes, url } from '../lib/notes';
 const notes = await getListedNotes();
 ---
 <Base here="home">
+  <h1 class="sr-only">{SITE.homeTitle}</h1>
   <div class="reports">
     {notes.length === 0 && <p>아직 책상 위에 놓인 글이 없어요.</p>}
     {notes.map((note) => <Report note={note} mode="cover" />)}
