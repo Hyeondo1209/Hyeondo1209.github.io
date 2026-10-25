@@ -71,6 +71,19 @@ function servePreview(dir, port, api) {
         res.writeHead(ok ? 200 : 409, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ ok }));
       }
+      if (p === '/__desk/meta' && req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        let out = { ok: false, error: '저장하지 못했어요.' };
+        try {
+          const d = JSON.parse(body);
+          const data = {};
+          for (const k of ['title', 'slug', 'date', 'tags']) if (k in d) data[k] = d[k];
+          out = await api.meta(String(d.docx), data);
+        } catch {}
+        res.writeHead(out.ok ? 200 : 400, { 'content-type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify(out));
+      }
       if (p === '/__desk/visibility' && req.method === 'POST') {
         let body = '';
         for await (const chunk of req) body += chunk;
@@ -156,6 +169,7 @@ async function saveMarks(docx, data) {
   await mkdir(MARKS, { recursive: true });
   const prev = await loadMarks(docx);
   const clean = {
+    ...prev,
     visibility: prev.visibility || 'public',
     date: /^\d{4}-\d{2}-\d{2}$/.test(data.date || '') ? data.date : null,
     marks: (Array.isArray(data.marks) ? data.marks : [])
@@ -163,6 +177,34 @@ async function saveMarks(docx, data) {
       .map((m) => ({ id: String(m.id), type: m.type, quote: m.quote, prefix: String(m.prefix || ''), suffix: String(m.suffix || '') })),
   };
   await writeFile(path.join(MARKS, docx + '.json'), JSON.stringify(clean, null, 2), 'utf8');
+}
+
+/** 미리보기에서 정한 주소·날짜·인덱스 (원고의 머리 줄보다 우선) */
+async function saveMeta(docx, data) {
+  await mkdir(MARKS, { recursive: true });
+  const cur = await loadMarks(docx);
+  if ('slug' in data) cur.slug = data.slug ? slugify(String(data.slug)) : null;
+  if ('title' in data) cur.title = String(data.title || '').replace(/\s+/g, ' ').trim().slice(0, 200) || null;
+  if ('date' in data) cur.date = /^\d{4}-\d{2}-\d{2}$/.test(data.date || '') ? data.date : null;
+  if ('tags' in data) {
+    cur.tags = Array.isArray(data.tags) ? data.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 8) : null;
+  }
+  await writeFile(path.join(MARKS, docx + '.json'), JSON.stringify(cur, null, 2), 'utf8');
+}
+
+/** 올리기 전에 볼 것: 공개되면 곤란할 수 있는 것들 */
+function checksFor(r, conv, content, { isNew, dateFrom }) {
+  const out = [];
+  if (isNew) out.push(`처음 정하는 주소예요: /notes/${r.slug}/ — 링크를 공유한 뒤에는 바꾸지 않는 게 좋아요.`);
+  if (isNew && dateFrom === 'today') out.push('날짜가 오늘로 찍혀요. 예전에 쓴 글이면 날짜를 바꾸세요.');
+  const text = content.replace(/<span class="tape"[^>]*>[^<]*<\/span>/g, '').replace(/<[^>]+>/g, ' ');
+  if (/(?<![\d.-])\d{8,}(?![\d.-])/.test(text)) out.push('8자리 넘는 숫자가 있어요(학번·계좌번호?). 필요하면 수정테이프로 가리세요.');
+  if (/\b\d{6}-\d{7}\b/.test(text)) out.push('주민등록번호처럼 보이는 숫자가 있어요.');
+  if (/\b01[016789][- .]?\d{3,4}[- .]?\d{4}\b/.test(text)) out.push('전화번호처럼 보이는 숫자가 있어요.');
+  if (/[\w.+-]+@[\w-]+\.[\w.]+/.test(text)) out.push('이메일 주소가 있어요.');
+  const memos = (content.match(/class="memo memo--/g) || []).length;
+  if (memos) out.push(`Word 메모 ${memos}개도 여백 메모로 공개돼요.`);
+  return out;
 }
 
 /** 글 보이기: public(공개) / unlisted(목록에서 숨김, 링크로만) / hidden(사이트에서 내림) */
@@ -191,7 +233,16 @@ async function convertAll() {
       const saved = await loadMarks(file);
       const conv = await convertDocx(buf, { fileName: file, marks: saved.marks });
       const prev = map.get(file);
-      let slug = conv.meta.slug || prev?.slug || slugify(file.replace(/\.docx$/i, ''));
+      if (saved.slug && conv.meta.slug && saved.slug !== conv.meta.slug) {
+        conv.warnings.push(`원고의 "주소:" 줄(${conv.meta.slug}) 대신 미리보기에서 정한 주소(${saved.slug})를 써요.`);
+      }
+      if (Array.isArray(saved.tags)) conv.meta.tags = saved.tags;
+      if (saved.title && saved.title !== conv.title) {
+        conv.warnings.push(`원고의 제목 대신 미리보기에서 정한 제목을 써요: "${saved.title}"`);
+        conv.title = saved.title;
+        conv.titleHtml = null; // 원고 제목에 했던 표시는 새 제목에 붙지 않음
+      }
+      let slug = saved.slug || conv.meta.slug || prev?.slug || slugify(file.replace(/\.docx$/i, ''));
       let n = 2;
       const base = slug;
       while (taken.has(slug)) slug = `${base}-${n++}`;
@@ -219,6 +270,7 @@ async function convertAll() {
         conv.warnings.push(`원고의 "날짜:" 줄(${conv.meta.date}) 대신 미리보기에서 바꾼 날짜(${saved.date})를 써요.`);
       }
       const date = saved.date || conv.meta.date || prev?.date || today();
+      const dateFrom = saved.date ? 'web' : conv.meta.date ? 'word' : prev?.date ? 'before' : 'today';
       const target = path.join(dir, 'index.md');
       const content = toNoteFile(conv, { date, docxName: file, unlisted: r.visibility === 'unlisted' });
       const before = existsSync(target) ? await readFile(target, 'utf8') : null;
@@ -235,7 +287,10 @@ async function convertAll() {
         status: before === null ? '새 글' : before === content ? '그대로' : '고침',
         warnings: [...r.warnings, ...conv.warnings],
         subtitle: conv.subtitle,
+        date,
+        tags: conv.meta.tags,
       });
+      r.checks = checksFor(r, conv, content, { isNew: !prev, dateFrom });
     } catch (e) {
       r.status = '실패';
       r.error = e.message;
@@ -274,7 +329,7 @@ function markStatus(results) {
 
 /** Word 원고와 상관없이 바뀐 것들 (직접 지운 글, 사이트 파일 등) */
 function otherChanges(results) {
-  const mine = new Set(results.filter((r) => r.slug).map((r) => r.slug));
+  const mine = new Set(results.flatMap((r) => [r.slug, r.oldSlug]).filter(Boolean)); // 주소를 바꾼 글의 예전 주소도 그 글의 일
   const st = git(['status', '--porcelain', '--untracked-files=all']).stdout || '';
   const removed = new Set();
   let files = 0;
@@ -331,7 +386,7 @@ async function main() {
     say(`    원고: ${r.file}`);
     if (!r.draft) say(`    주소: ${siteBase}/notes/${r.slug}/`);
     for (const w of r.warnings) say(`    ! ${w}`);
-    if (r.subtitle?.some((s) => /\b\d{8}\b/.test(s))) say('    ! 부제 줄에 학번처럼 보이는 숫자가 있어요. 가리려면 미리보기에서 수정테이프를 붙이세요.');
+    if (r.status === '새 글' || r.status === '고침') for (const c of r.checks || []) say(`    ? ${c}`);
   }
   for (const o of orphans) {
     say(`? 원고 폴더에 없는 글: /notes/${o.slug}/ (${o.docx})`);
@@ -389,6 +444,8 @@ async function main() {
   const visStart = new Map(); // 이번에 보이기를 바꾼 원고 → 바꾸기 전 값 (올리지 않으면 되돌림)
   const visNow = new Map();
   const VIS_TEXT = { public: '다시 공개', unlisted: '목록에서 숨김', hidden: '사이트에서 내림' };
+  const metaNow = new Map(); // 이번에 미리보기에서 바꾼 주소·날짜·인덱스
+  const metaStart = new Map(); // 바꾸기 전 값 (올리지 않으면 되돌림)
   let decideFromWeb;
   const fromWeb = new Promise((resolve) => (decideFromWeb = resolve));
   const api = {
@@ -396,7 +453,33 @@ async function main() {
       const docx = bySlug.get(slug);
       if (!docx) return { editable: false, reason: '이 글은 Word 원고로<br>만든 글이 아니라서<br>표시할 수 없어요.' };
       const r = results.find((x) => x.file === docx);
-      return { editable: web.phase === 'waiting', docx, ...(await loadMarks(docx)), visibility: visNow.get(docx) || r?.visibility || 'public' };
+      const saved = await loadMarks(docx);
+      return {
+        editable: web.phase === 'waiting',
+        docx,
+        ...saved,
+        visibility: visNow.get(docx) || r?.visibility || 'public',
+        meta: { title: saved.title || r?.title, slug: saved.slug || r?.slug, date: saved.date || r?.date, tags: Array.isArray(saved.tags) ? saved.tags : r?.tags || [] },
+      };
+    },
+    async meta(docx, data) {
+      const r = results.find((x) => x.file === docx);
+      if (!r || web.phase !== 'waiting') return { ok: false, error: '지금은 바꿀 수 없어요.' };
+      if ('title' in data && !String(data.title || '').trim()) data.title = null; // 비우면 원고 제목으로
+      if ('slug' in data) {
+        const want = slugify(String(data.slug || ''));
+        if (!want || want === 'untitled') return { ok: false, error: '주소는 영문 소문자, 숫자, - 로 써주세요.' };
+        if (results.some((x) => x !== r && x.slug === want)) return { ok: false, error: '다른 글이 이미 쓰는 주소예요.' };
+        data.slug = want;
+      }
+      if (!metaStart.has(docx)) {
+        const before = await loadMarks(docx);
+        metaStart.set(docx, { title: before.title ?? null, slug: before.slug ?? null, date: before.date ?? null, tags: before.tags ?? null });
+      }
+      await saveMeta(docx, data);
+      metaNow.set(docx, { ...(metaNow.get(docx) || {}), ...data });
+      marksDirty = true;
+      return { ok: true, slug: data.slug };
     },
     async visibility(docx, value) {
       const r = results.find((x) => x.file === docx);
@@ -429,7 +512,12 @@ async function main() {
     status() {
       const changes = results
         .filter((r) => r.draft ? r.unpublished : r.status === '새 글' || r.status === '고침')
-        .map((r) => ({ kind: r.draft ? '내림' : r.status, title: r.title, url: r.draft ? '' : `/notes/${r.slug}/` }));
+        .map((r) => ({ kind: r.draft ? '내림' : r.status, title: r.title, url: r.draft ? '' : `/notes/${r.slug}/`, checks: r.draft ? [] : r.checks || [] }));
+      for (const [docx, m] of metaNow) {
+        const r = results.find((x) => x.file === docx);
+        const what = ['title' in m ? '제목' : '', m.slug && r?.slug !== m.slug ? `주소 → /notes/${m.slug}/` : '', 'date' in m ? '날짜' : '', 'tags' in m ? '인덱스' : ''].filter(Boolean).join(', ');
+        if (what) changes.push({ kind: '설정', title: `${r?.title || docx}: ${what}`, url: '' });
+      }
       for (const [docx, v] of visNow) {
         if (v === visStart.get(docx)) continue;
         const r = results.find((x) => x.file === docx);
@@ -489,9 +577,11 @@ async function main() {
     if (!yes) {
       await revert();
       for (const [docx, v] of visStart) await setVisibility(docx, v); // 내리기·숨기기는 되돌림
+      for (const [docx, m] of metaStart) await saveMeta(docx, m); // 주소·날짜·인덱스도 되돌림
       say();
       say('올리지 않았어요. 사이트 파일도 원래대로 돌려놨어요.');
-      if (marksDirty) say('미리보기에서 한 표시는 저장해 뒀어요. 다음에 올릴 때 같이 올라가요. (내리기·숨기기는 취소했어요)');
+      if (marksEdited) say('미리보기에서 한 표시는 저장해 뒀어요. 다음에 올릴 때 같이 올라가요.');
+      if (visStart.size || metaStart.size) say('이번에 바꾼 제목·주소·날짜·인덱스와 숨기기·내리기는 취소했어요.');
       say('원고를 고친 뒤 올리기를 다시 실행하세요.');
       return 'cancelled';
     }

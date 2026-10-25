@@ -37,13 +37,21 @@ const css = `
   background:#c0c0c0;padding:3px;border:1px solid;border-color:#fff #404040 #404040 #fff;box-shadow:1px 1px 0 #000}
 .desk-title{display:flex;justify-content:space-between;align-items:center;padding:1px 2px 1px 6px;background:#000080;color:#fff;font-weight:bold;user-select:none}
 .desk-title button{all:unset;width:16px;height:14px;line-height:12px;text-align:center;color:#000;background:#c0c0c0;border:1px solid;border-color:#fff #404040 #404040 #fff;font-size:12px}
-.desk-body{margin-top:3px;padding:8px 10px;max-height:62vh;overflow:auto;background:#fff;border:1px solid;border-color:#808080 #fff #fff #808080}
+.desk-body{margin-top:3px;padding:8px 10px;max-height:44vh;overflow:auto;background:#fff;border:1px solid;border-color:#808080 #fff #fff #808080}
 .desk-panel.is-min .desk-body{display:none}
 .desk-panel a{color:#0000ee;text-decoration:underline;cursor:pointer}
 .desk-panel .desk-err{color:#d4202c}
 .desk-vis{margin-top:20px}
+.desk-vis label{display:block;margin-top:6px;font-size:12px;color:#444}
+.desk-vis input::placeholder{color:#b0b0b0;font-style:italic}
+.desk-vis input{box-sizing:border-box;width:100%;font:12px/18px GulimChe,'굴림체','Seorap Gulim',monospace;padding:1px 4px;border:1px solid;border-color:#808080 #fff #fff #808080;background:#fff}
+.desk-vis .desk-slug{display:flex;align-items:center;gap:2px;font-size:12px}
+.desk-vis .desk-slug input{flex:1;min-width:0}
+.desk-note{font-size:12px;line-height:17px;margin-top:4px}
+.desk-check{font-size:12px;line-height:17px;color:#555;padding-left:12px}
 .desk-vis:empty{display:none}
-.desk-decide{margin-top:20px;padding-top:12px;border-top:1px solid #000}
+.desk-decide{margin:0;padding:0;border:0}
+.desk-foot{max-height:34vh}
 .desk-log{margin-top:8px;font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-all}
 html.desk-on .sheet .report__date{cursor:pointer;outline:1px dashed #9a9a9a;outline-offset:3px}
 .desk-date-input{font:inherit;font-size:12px;border:1px solid #000;padding:0 2px;background:#fff}
@@ -126,8 +134,11 @@ async function start() {
   titleBar.innerHTML = '<span>미리보기</span><button type="button" title="접기 / 펼치기">_</button>';
   const body = document.createElement('div');
   body.className = 'desk-body';
-  body.append(markBox, visBox, decideBox);
-  panel.append(titleBar, body);
+  body.append(markBox, visBox);
+  const foot = document.createElement('div');
+  foot.className = 'desk-body desk-foot';
+  foot.append(decideBox);
+  panel.append(titleBar, body, foot); // 올리기 칸은 스크롤과 상관없이 늘 보이게
   document.body.append(panel);
   try {
     if (localStorage.getItem('desk-panel-min') === '1') panel.classList.add('is-min');
@@ -209,9 +220,9 @@ async function start() {
       return;
     }
     markBox.innerHTML = on
-      ? `<b>표시하기</b> 켜짐<br>글자를 드래그해서<br>표시를 고르세요.<br>날짜를 누르면<br>바꿀 수 있어요.<br><br>${
-          error ? `<span class="desk-err">${error}</span>` : saved ? `저장됨 ${saved}` : '&nbsp;'
-        }<br><br><a data-act="off">끄기</a>`
+      ? `<b>표시하기</b> 켜짐 · <a data-act="off">끄기</a><br>글자를 드래그해서 표시를<br>고르세요. ${
+          error ? `<br><span class="desk-err">${error}</span>` : saved ? `<br>저장됨 ${saved}` : ''
+        }`
       : `<b>표시하기</b> 꺼짐<br><br><a data-act="on">켜기</a>`;
     document.documentElement.classList.toggle('desk-on', on);
   }
@@ -271,13 +282,16 @@ async function start() {
 
   // 그냥 클릭(끌지 않음)이면 도구 막대를 닫음. 두 번 클릭(낱말 고르기)은 그대로 둠
   let down = null;
+  // 미리보기 창이나 입력 칸 안의 클릭은 건드리지 않음 (글자 입력이 막히지 않게)
+  const isForm = (t) => !!t?.closest?.('.desk-panel, input, textarea, select, button');
   document.addEventListener('mousedown', (e) => {
-    down = { x: e.clientX, y: e.clientY, inBar: bar.contains(e.target) };
+    down = isForm(e.target) ? null : { x: e.clientX, y: e.clientY, inBar: bar.contains(e.target) };
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') hideBar();
   });
   document.addEventListener('mouseup', (ev) => {
+    if (isForm(ev.target) || !down) return;
     const click = down && !down.inBar && Math.hypot(ev.clientX - down.x, ev.clientY - down.y) < 4 && ev.detail < 2;
     setTimeout(() => {
       if (!on) return;
@@ -374,6 +388,17 @@ async function start() {
     report.style.setProperty('--age', age.toFixed(3));
     return true;
   }
+  window.addEventListener('desk:title', (e) => {
+    const h = template.querySelector('.report__title');
+    if (!h) return;
+    h.textContent = e.detail; // 원고 제목에 했던 표시는 새 제목에 붙지 않음
+    document.title = document.title.replace(/^.*?( \| [^|]+)$/, `${e.detail}$1`);
+    repaginate();
+  });
+  window.addEventListener('desk:date', (e) => {
+    state.date = e.detail;
+    if (setDate(e.detail)) repaginate();
+  });
   document.addEventListener('click', (e) => {
     if (!on) return;
     const dateEl = e.target.closest('.sheet .report__date');
@@ -431,7 +456,11 @@ function setupDecide(box, visBox, onLock) {
   }
   function draw() {
     if (st.phase === 'waiting') {
-      const lines = st.changes.map((c) => `· ${esc(c.kind)}: ${c.url ? `<a href="${c.url}">${esc(c.title)}</a>` : esc(c.title)}`);
+      const lines = st.changes.map(
+        (c) =>
+          `· ${esc(c.kind)}: ${c.url ? `<a href="${c.url}">${esc(c.title)}</a>` : esc(c.title)}` +
+          (c.checks || []).map((k) => `<div class="desk-check">? ${esc(k)}</div>`).join(''),
+      );
       if (st.marksDirty) lines.push('· 미리보기에서 한 표시와 날짜');
       box.innerHTML = `<b>사이트에 올리기</b><br>${
         lines.length ? `올라갈 것:<br>${lines.join('<br>')}` : '바뀐 것이 없어요.<br>표시를 하면 여기에<br>나타나요.'
@@ -457,7 +486,7 @@ function setupDecide(box, visBox, onLock) {
   };
   function drawVis() {
     if (!st || st.phase !== 'waiting' || !st.notes) {
-      visBox.innerHTML = '';
+      setVis('');
       return;
     }
     const link = (docx, value, text) => `<a data-docx="${esc(docx)}" data-vis="${value}">${text}</a>`;
@@ -469,11 +498,23 @@ function setupDecide(box, visBox, onLock) {
         unlisted: [link(mine.docx, 'public', '다시 목록에 보이기'), link(mine.docx, 'hidden', '사이트에서 내리기')],
         hidden: [link(mine.docx, 'public', '내리지 않기')],
       }[v];
-      visBox.innerHTML = `<b>이 글은</b> ${VIS[v]}<br>${acts.join('<br>')}`;
+      // 입력 중이면 다시 그리지 않음 (쓰던 글자가 날아가지 않게)
+      if (typing || (visBox.contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) return;
+      const m = mineMeta || {};
+      const html = `<b>이 글</b>
+        <label>제목 (비우면 원고 첫 문단)</label><input data-f="title" value="${esc(m.title || '')}">
+        <label>주소</label><div class="desk-slug">/notes/<input data-f="slug" value="${esc(m.slug || '')}" spellcheck="false">/</div>
+        <label>날짜</label><input data-f="date" value="${esc(m.date || '')}" placeholder="예) 2026-10-25">
+        <label>인덱스 (쉼표로 나눔)</label><input data-f="tags" value="${esc((m.tags || []).join(', '))}" placeholder="비어 있음 — 예) 철학, 독서">
+        <button class="desk-btn" type="button" data-save>바꾸기</button>
+        <div class="desk-note">${metaMsg}</div>
+        <div style="margin-top:12px"><b>보이기</b> ${VIS[v]}<br>${acts.join('<br>')}</div>`;
+      // 내용이 그대로면 다시 그리지 않음 (누르려던 칸이 바뀌어 버리지 않게)
+      setVis(html);
       return;
     }
     if (slug) {
-      visBox.innerHTML = '';
+      setVis('');
       return;
     }
     // 첫 화면·글 목록: 숨기거나 내린 글을 여기서 다시 보이게
@@ -486,8 +527,56 @@ function setupDecide(box, visBox, onLock) {
               n.visibility === 'hidden' ? '내림' : '목록에서 숨김'
             } — ${link(n.docx, 'public', '다시 공개')}`,
       );
-    visBox.innerHTML = rows.length ? `<b>숨기거나 내린 글</b><br>${rows.join('<br>')}` : '';
+    setVis(rows.length ? `<b>숨기거나 내린 글</b><br>${rows.join('<br>')}` : '');
   }
+  let lastVisHtml = null;
+  const setVis = (html) => {
+    if (html !== lastVisHtml) visBox.innerHTML = lastVisHtml = html;
+  };
+  let mineMeta = null;
+  let metaMsg = '';
+  let typing = false; // 고치는 중인 칸이 있으면 다시 그리지 않음
+  visBox.addEventListener('input', () => (typing = true));
+  async function loadMine() {
+    if (!slug) return;
+    try {
+      const d = await (await fetch(`/__desk/marks?slug=${encodeURIComponent(slug)}`)).json();
+      if (d.meta) mineMeta = { ...d.meta, docx: d.docx };
+    } catch {}
+  }
+  visBox.addEventListener('click', async (e) => {
+    if (!e.target.closest('button[data-save]') || !mineMeta) return;
+    const val = (f) => visBox.querySelector(`input[data-f="${f}"]`).value.trim();
+    const body = { docx: mineMeta.docx };
+    if (val('title') !== (mineMeta.title || '')) body.title = val('title');
+    if (val('slug') !== (mineMeta.slug || '')) body.slug = val('slug');
+    if (val('date') !== (mineMeta.date || '')) {
+      if (val('date') && !/^\d{4}-\d{2}-\d{2}$/.test(val('date'))) {
+        metaMsg = '<span class="desk-err">날짜는 2026-10-25 처럼 써주세요.</span>';
+        return drawVis();
+      }
+      body.date = val('date');
+    }
+    const tags = val('tags').split(/[,，、]/).map((t) => t.trim()).filter(Boolean);
+    if (tags.join(',') !== (mineMeta.tags || []).join(',')) body.tags = tags;
+    typing = false;
+    if (Object.keys(body).length === 1) {
+      metaMsg = '바뀐 것이 없어요.';
+      return drawVis();
+    }
+    let out = { ok: false, error: '저장하지 못했어요.' };
+    try {
+      out = await (await fetch('/__desk/meta', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
+    } catch {}
+    if (out.ok) {
+      if ('date' in body && body.date) window.dispatchEvent(new CustomEvent('desk:date', { detail: body.date }));
+      if (body.title) window.dispatchEvent(new CustomEvent('desk:title', { detail: body.title }));
+      metaMsg = '저장했어요. 올리기를 누르면 반영돼요.' + (body.slug ? '<br>예전 주소는 없어져요.' : '');
+      await loadMine();
+    } else metaMsg = `<span class="desk-err">${esc(out.error || '저장하지 못했어요.')}</span>`;
+    document.activeElement?.blur();
+    refresh();
+  });
   visBox.addEventListener('click', async (e) => {
     const a = e.target.closest('a[data-vis]');
     if (!a) return;
@@ -511,7 +600,7 @@ function setupDecide(box, visBox, onLock) {
     refresh();
   });
   window.addEventListener('desk:saved', refresh);
-  refresh();
+  loadMine().then(refresh);
   timer = setInterval(refresh, 3000); // 검은 창에서 y/n 을 눌렀을 때도 따라감
 }
 

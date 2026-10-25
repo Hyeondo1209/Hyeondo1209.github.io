@@ -85,7 +85,9 @@ const JUNG = ['a', 'ae', 'ya', 'yae', 'eo', 'e', 'yeo', 'ye', 'o', 'wa', 'wae', 
 const JONG = ['', 'k', 'k', 'k', 'n', 'n', 'n', 't', 'l', 'k', 'm', 'l', 'l', 'l', 'p', 'l', 'm', 'p', 'p', 't', 't', 'ng', 't', 't', 'k', 't', 'p', 't'];
 export function slugify(name) {
   let out = '';
-  for (const ch of name) {
+  // ć → c, é → e 처럼 라틴 글자의 부호는 떼고 (한글은 그대로 둔 채 아래에서 로마자로)
+  const plain = [...name].map((ch) => (/[\u00c0-\u024f]/.test(ch) ? ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : ch)).join('');
+  for (const ch of plain) {
     const c = ch.codePointAt(0);
     if (c >= 0xac00 && c <= 0xd7a3) {
       const i = c - 0xac00;

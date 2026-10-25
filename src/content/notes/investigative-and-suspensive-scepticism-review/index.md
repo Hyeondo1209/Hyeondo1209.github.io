@@ -1,6 +1,7 @@
 ---
 title: "Filip Grgić, “Investigative and Suspensive Scepticism” 논문 리뷰"
 date: 2026-10-25
+tags: ["철학", "논문"]
 docx: "Filip Grgić, “Investigative and Suspensive Scepticism” 논문 리뷰.docx"
 ---
 
