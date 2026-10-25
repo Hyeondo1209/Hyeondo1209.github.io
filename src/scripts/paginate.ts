@@ -224,12 +224,72 @@ function paginate(report: HTMLElement, template: HTMLElement) {
   if (flags) sheets[0].append(flags);
   if (date) sheets[0].append(date);
 
+  // 첫 화면: 각 메모가 몇째 장 어디쯤에 붙어 있는지 재 두었다가, 쌓인 종이 사이로 삐져나오게
+  const peeks: Array<{ m: Element; page: number; y: number }> = [];
+  if (mode === 'cover' && memos) {
+    for (const m of Array.from(memos.children)) {
+      const id = (m as HTMLElement).dataset.memo || '';
+      const at = pagesEl.querySelector(`[data-memo="${CSS.escape(id)}"]`);
+      const sh = at?.closest('.sheet');
+      if (!at || !sh) continue;
+      peeks.push({ m, page: sheets.indexOf(sh as HTMLElement), y: at.getBoundingClientRect().top - sh.getBoundingClientRect().top });
+    }
+  }
   if (mode === 'cover') {
     sheets.slice(1).forEach((s) => s.remove());
   }
+  placePeeks(report, peeks);
   report.classList.toggle('is-shrunk', shrink);
   if (mode === 'cover') report.classList.add('is-scaled');
   placeMemos(report, mode === 'full' && !narrow ? memos : null);
+}
+
+// ── 첫 화면: 쌓인 보고서 장 사이로 삐져나온 메모 ──────────────────
+const PEEK_MAX = 6;
+function placePeeks(report: HTMLElement, peeks: Array<{ m: Element; page: number; y: number }>) {
+  report.querySelector('.report__peeks')?.remove();
+  if (!peeks.length) return;
+  const layer = document.createElement('div');
+  layer.className = 'report__peeks';
+  report.prepend(layer); // 종이보다 아래에 깔림
+  const sheetH = report.querySelector<HTMLElement>('.sheet')?.offsetHeight || 1123;
+  const flags = report.querySelector('.flags') as HTMLElement | null;
+  const flagsBottom = flags ? flags.offsetTop + flags.offsetHeight + 24 : 0;
+  // 오른쪽 가장자리로 삐져나온 것들이 너무 겹치지 않게, 위에서부터 차례로 자리를 잡음
+  let floor = flagsBottom;
+  const right: typeof peeks = [];
+  const bottom: typeof peeks = [];
+  peeks.slice(0, PEEK_MAX).sort((a, b) => a.page - b.page || a.y - b.y).forEach((p) => {
+    (p.y > sheetH - 260 || right.length >= 4 ? bottom : right).push(p);
+  });
+  // 인덱스 아래부터 종이 아래쪽까지 고르게 흩어 꽂음 (메모 순서대로, 조금씩 어긋나게)
+  const span = Math.max(200, sheetH - 240 - floor);
+  right.forEach((p, i) => {
+    const id = (p.m as HTMLElement).dataset.memo || '';
+    const h = hash(id + 'peek');
+    const el = p.m.cloneNode(true) as HTMLElement;
+    el.classList.add('memo--peek');
+    if (el.classList.contains('memo--paper')) el.style.setProperty('--tear', tearEdge(id));
+    layer.append(el);
+    // 종이 밖으로 나온 폭 (포스트잇은 조금 더 나오게 해서 숨지 않게)
+    const stick = (el.classList.contains('memo--postit') ? 24 : 12) + (h % 36);
+    const top = floor + (span * (i + 0.5)) / right.length - 50 + ((h >> 4) % 40);
+    el.style.left = `calc(var(--sheet-w, 794px) - ${el.offsetWidth - stick}px)`;
+    el.style.top = `${Math.round(top)}px`;
+    el.style.setProperty('--tilt', `${((h % 9) - 4) * 1.1}deg`);
+  });
+  bottom.forEach((p, i) => {
+    const id = (p.m as HTMLElement).dataset.memo || '';
+    const h = hash(id + 'peek');
+    const el = p.m.cloneNode(true) as HTMLElement;
+    el.classList.add('memo--peek', 'memo--peek-bottom');
+    if (el.classList.contains('memo--paper')) el.style.setProperty('--tear', tearEdge(id));
+    layer.append(el);
+    const stick = 4 + (h % 28);
+    el.style.left = `${Math.round(300 + i * 170 + (h % 50))}px`;
+    el.style.top = `calc(var(--sheet-h, 1123px) - ${Math.min(el.offsetHeight, 220) - stick}px)`;
+    el.style.setProperty('--tilt', `${((h % 11) - 5) * 1.3}deg`);
+  });
 }
 
 // ── 여백 메모: 메모가 붙은 문장 높이에, 겹치면 아래로 ──────────────

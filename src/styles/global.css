@@ -459,3 +459,11 @@ html[data-cover-flags='big'] .reports .flag {
     linear-gradient(to bottom, rgb(255 255 255 / 0.3), rgb(255 255 255 / 0) 40%, rgb(0 0 0 / 0.05)),
     linear-gradient(to right, rgb(var(--c) / 0.35) 0 calc(32px / var(--cover-scale, 0.68)), rgb(var(--c) / 0.95) calc(32px / var(--cover-scale, 0.68)));
 }
+
+/* 첫 화면: 쌓인 보고서 장 사이로 삐져나온 메모 (종이 아래에 깔려 가장자리만 보임) */
+.report[data-mode='cover'] .report__pages { position: relative; z-index: 1; }
+.report__peeks { position: absolute; inset: 0; z-index: 0; pointer-events: none; transform-origin: 397px 561px; transition: transform 0.25s ease; }
+/* 종이를 들면 사이에 끼운 메모도 같이 들림 (종이와 같은 중심, 같은 움직임) */
+.report[data-mode='cover']:hover .report__peeks { transform: translateY(-6px) rotate(-0.4deg); }
+.memo--peek { max-height: 220px; overflow: hidden; }
+.memo--peek.memo--postit { min-height: 120px; }
