@@ -128,7 +128,11 @@ function makeSheet(index: number, mode: string) {
 
 function paginate(report: HTMLElement, template: HTMLElement) {
   const mode = report.dataset.mode || 'full';
+  report.classList.remove('is-scaled'); // 첫 화면의 줄임은 다 나눈 뒤에
   const pagesEl = report.querySelector<HTMLElement>('.report__pages')!;
+  // 다시 나눌 때(창 크기 변경 등) 첫 장에 붙여 둔 인덱스가 같이 지워지지 않게 먼저 빼 둠
+  const keepFlags = report.querySelector('.flags');
+  if (keepFlags) report.prepend(keepFlags);
   pagesEl.replaceChildren();
 
   const narrow = isNarrow();
@@ -224,6 +228,7 @@ function paginate(report: HTMLElement, template: HTMLElement) {
     sheets.slice(1).forEach((s) => s.remove());
   }
   report.classList.toggle('is-shrunk', shrink);
+  if (mode === 'cover') report.classList.add('is-scaled');
   placeMemos(report, mode === 'full' && !narrow ? memos : null);
 }
 

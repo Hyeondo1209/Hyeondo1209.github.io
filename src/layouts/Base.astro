@@ -2,6 +2,8 @@
 import 'katex/dist/katex.min.css';
 import '../styles/global.css';
 import { SITE } from '../site.config';
+// 미리보기에서 정하는 보기 설정 (첫 화면 종이 크기, 제목 정렬, 첫 화면 인덱스)
+import SETTINGS from '../settings.json';
 import { url } from '../lib/notes';
 
 interface Props {
@@ -9,8 +11,12 @@ interface Props {
   description?: string;
   lang?: 'ko' | 'en';
   noindex?: boolean;
+  /** 지금 페이지 (머리말 오른쪽 링크에서 자기 자신은 뺌) */
+  here?: 'home' | 'list' | 'about' | 'note' | 'other';
 }
-const { title, description = SITE.intro, lang = 'ko', noindex = false } = Astro.props;
+const { title, description = SITE.intro, lang = 'ko', noindex = false, here = 'other' } = Astro.props;
+// 머리말 오른쪽 끝: 목록 (첫 화면은 가운데 "desk" 를 누르면)
+const nav = [{ key: 'list', label: '목록', href: url('/list/') }].filter((n) => n.key !== here);
 const fullTitle = title ? `${title} | ${SITE.title}` : SITE.title;
 const fonts = url('/fonts/');
 // 굴림체가 없는 기기(맥, 폰)에서 대신 쓰는 조합 글꼴:
@@ -22,7 +28,12 @@ const fontFaces = `
   unicode-range: U+1100-11FF, U+3000-303F, U+3130-318F, U+AC00-D7A3; font-display: swap; }`;
 ---
 <!doctype html>
-<html lang={lang}>
+<html
+  lang={lang}
+  data-title-align={SETTINGS.titleAlign}
+  data-cover-flags={SETTINGS.coverFlags}
+  style={`--cover-scale:${SETTINGS.coverScale}`}
+>
   <head>
     <meta charset="utf-8" />
     <!-- 폰에서도 데스크톱 화면(A4 + 오른쪽 여백)을 통째로 축소해서 보여줌. 손가락으로 확대해서 읽음 -->
@@ -36,7 +47,10 @@ const fontFaces = `
   <body>
     <div class="page">
       <header class="site-head">
-        <slot name="head" />
+        <p>
+          <a href={url('/about/')}>{SITE.ownerEn}</a>의 <a class="site-head__home" href={url('/')}>desk</a>
+          <span class="site-head__nav">{nav.map((n) => <a href={n.href}>{n.label}</a>)}</span>
+        </p>
       </header>
       <main>
         <slot />
@@ -50,6 +64,7 @@ const fontFaces = `
       </script>
       <script>
         import '../scripts/paginate.ts';
+        import '../scripts/desk-open.ts';
       </script>
     </div>
   </body>

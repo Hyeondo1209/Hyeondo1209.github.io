@@ -40,7 +40,12 @@ img { display: block; max-width: 100%; height: auto; }
 .page { max-width: calc(794px + 320px); margin: 0 auto; }
 
 /* 머리말: 아직 정하지 않음. 레퍼런스처럼 가운데 정렬 두 줄만 */
-.site-head p { text-align: center; }
+.site-head p { position: relative; text-align: center; }
+/* 목록(또는 첫 화면) 링크는 화면 오른쪽 끝에 */
+.site-head__nav { position: absolute; right: 4px; top: 7px; display: flex; gap: 2ch; }
+/* 가운데 "desk": 첫 화면으로. 평소엔 그냥 글자, 마우스를 올리면 밑줄 */
+.site-head__home { color: inherit; text-decoration: none; }
+.site-head__home:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 
 h1 { font-size: 25px; line-height: 48px; padding: 12px 0; text-align: center; }
 h2, h3, h4 { font-size: 14px; line-height: 20px; padding: 15px 0 9px; }
@@ -51,7 +56,9 @@ h2 a { color: inherit; text-decoration: none; }
 
 /* 보고서 맨 위: 제목과 부제 */
 .report__head { padding: 0 0 12px; }
-.report__title { padding-top: 0; }
+.report__title { padding-top: 0; font-size: 22px; line-height: 34px; }
+/* 제목 정렬 (미리보기에서 정함): 가운데면 부제도 가운데 */
+html[data-title-align='center'] .report__head { text-align: center; padding-bottom: 20px; }
 .report__subtitle { padding: 0; }
 
 /* 굵게는 그냥 굵게 */
@@ -134,7 +141,24 @@ th strong { font-weight: bold; }
 .katex-display { overflow-x: auto; overflow-y: hidden; }
 
 /* ── 보고서와 A4 장 ─────────────────────────── */
-.reports { display: flex; flex-direction: column; align-items: flex-start; gap: 48px; padding-bottom: 48px; }
+/* 첫 화면: 책상을 위에서 내려다본 크기 (최근 글이 왼쪽 위). 크기는 미리보기에서 골라 정함 */
+.reports {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, calc(794px * var(--cover-scale, 0.68)));
+  gap: 40px 24px;
+  align-items: start;
+  padding: 8px 0 48px 4px;
+}
+.reports > p { grid-column: 1 / -1; }
+/* 글자를 원래 크기로 그린 뒤 종이째 줄임 (글자 크기를 줄이면 굴림체가 깨져 보임).
+   장 나누기가 끝난 뒤(is-scaled)에만 줄여야 크기를 제대로 잼 */
+.reports .report[data-mode='cover'] { padding-bottom: 0; }
+.reports .report[data-mode='cover'].is-scaled {
+  transform: scale(var(--cover-scale, 0.68));
+  transform-origin: 0 0;
+  margin-right: calc(794px * (var(--cover-scale, 0.68) - 1));
+  margin-bottom: calc(var(--sheet-h, 1123px) * (var(--cover-scale, 0.68) - 1));
+}
 
 .report {
   --age: 0;
@@ -237,6 +261,30 @@ th strong { font-weight: bold; }
 .report[data-mode='cover'][data-pages='2'] .sheet {
   box-shadow: var(--sheet-shadow), 5px 5px 0 -0.5px var(--paper-now), 5px 5px 0 0 rgb(0 0 0 / 0.08);
 }
+/* 첫 화면: 마우스를 올리면 종이가 살짝 들림 */
+.report[data-mode='cover'] .sheet { transition: transform 0.25s ease, filter 0.25s ease; }
+.report[data-mode='cover']:hover .sheet {
+  transform: translateY(-6px) rotate(-0.4deg);
+  filter: drop-shadow(0 18px 18px rgb(0 0 0 / 0.14));
+}
+/* 누르면: 그 종이가 커지며 글 페이지 첫 장 자리로 (src/scripts/desk-open.ts) */
+.desk-fly {
+  position: fixed;
+  z-index: 100;
+  margin: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  transition: transform 0.55s cubic-bezier(0.25, 0.8, 0.25, 1), filter 0.55s ease;
+}
+/* 도착한 글 페이지: 뒷장과 여백 메모가 뒤따라 나타남 */
+html.desk-arrive .report[data-mode='full'] .sheet:not(:first-child) { animation: desk-in 0.6s 0.05s both cubic-bezier(0.2, 0.7, 0.2, 1); }
+html.desk-arrive .report__margin .memo { animation: desk-in 0.6s 0.25s both ease; }
+@keyframes desk-in { from { opacity: 0; transform: translateY(-24px); } }
+@media (prefers-reduced-motion: reduce) {
+  .report[data-mode='cover'] .sheet, .desk-fly { transition: none; }
+  html.desk-arrive .report[data-mode='full'] .sheet, html.desk-arrive .report__margin .memo { animation: none; }
+}
+
 /* 첫 화면: 종이 전체를 누르면 그 보고서로 */
 .report[data-mode='cover'] .report__open::after { content: ''; position: absolute; inset: 0; z-index: 1; }
 .report[data-mode='cover'] .flags { z-index: 3; }
@@ -392,3 +440,22 @@ sup a[data-footnote-ref]::after { content: ']'; }
   background-position: 0 0, 0 8px, 0 0;
 }
 .memo--paper.is-lit { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.14)) drop-shadow(0 6px 8px rgb(0 0 0 / 0.12)); }
+
+/* 소개 페이지 */
+.about { max-width: 794px; padding: 24px 4px 48px; }
+.about__ko { font-weight: normal; color: #444; margin-left: 1ch; }
+
+/* 첫 화면 인덱스 (미리보기에서 정함)
+   small: 종이와 같이 줄어듦 / big: 종이를 줄여도 글 페이지에서 보이는 크기 그대로, 색 조금 진하게 / none: 첫 화면에서는 숨김 */
+html[data-cover-flags='none'] .reports .flags { display: none; }
+html[data-cover-flags='big'] .reports .flags { gap: calc(8px / var(--cover-scale, 0.68)); right: calc(-96px / var(--cover-scale, 0.68)); }
+html[data-cover-flags='big'] .reports .flag {
+  width: calc(128px / var(--cover-scale, 0.68));
+  height: calc(30px / var(--cover-scale, 0.68));
+  font-size: calc(13px / var(--cover-scale, 0.68));
+  line-height: calc(30px / var(--cover-scale, 0.68));
+  padding-left: calc(40px / var(--cover-scale, 0.68));
+  background:
+    linear-gradient(to bottom, rgb(255 255 255 / 0.3), rgb(255 255 255 / 0) 40%, rgb(0 0 0 / 0.05)),
+    linear-gradient(to right, rgb(var(--c) / 0.35) 0 calc(32px / var(--cover-scale, 0.68)), rgb(var(--c) / 0.95) calc(32px / var(--cover-scale, 0.68)));
+}

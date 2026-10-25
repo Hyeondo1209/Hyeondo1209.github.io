@@ -2,6 +2,8 @@
 export const SITE = {
   title: 'Desk',
   owner: '김현도',
+  // 머리말 가운데: "Hyeondo Kim의 desk" — 이름을 누르면 소개 페이지(/about/)로
+  ownerEn: 'Hyeondo Kim',
   // 검색 결과나 링크 미리보기에 나오는 한 줄 소개
   intro: '김현도의 글, 논문 노트, 독서 노트.',
 };

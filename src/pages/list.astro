@@ -7,8 +7,7 @@ import { getListedNotes, noteUrl, url } from '../lib/notes';
 const notes = await getListedNotes();
 const tags = [...new Set(notes.flatMap((n) => n.data.tags))];
 ---
-<Base title="글 목록">
-  <p slot="head">{SITE.title}<br />첫 화면으로: <a href={url('/')}>여기</a></p>
+<Base title="목록" here="list">
   <p>
     {notes.map((n) => (
       <>

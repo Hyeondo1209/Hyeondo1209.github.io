@@ -1,0 +1,11 @@
+---
+// 소개 ("현관"): 머리말의 이름을 누르면 오는 곳. 내용은 아직 준비 중.
+import Base from '../layouts/Base.astro';
+import { SITE } from '../site.config';
+---
+<Base title={SITE.ownerEn} description={`${SITE.ownerEn} (${SITE.owner})`} here="about">
+  <div class="about">
+    <h2>{SITE.ownerEn} <span class="about__ko">{SITE.owner}</span></h2>
+    <p>소개를 준비하고 있어요.</p>
+  </div>
+</Base>

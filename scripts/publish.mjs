@@ -71,6 +71,25 @@ function servePreview(dir, port, api) {
         res.writeHead(ok ? 200 : 409, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ ok }));
       }
+      if (p === '/__desk/settings' && req.method === 'POST') {
+        // 보기 설정 (첫 화면 종이 크기, 제목 정렬, 첫 화면 인덱스) → src/settings.json
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        let ok = false;
+        try {
+          const d = JSON.parse(body);
+          const file = path.join(ROOT, 'src', 'settings.json');
+          const cur = JSON.parse(await readFile(file, 'utf8'));
+          const v = Number(d.coverScale);
+          if (v >= 0.3 && v <= 1) cur.coverScale = Math.round(v * 100) / 100;
+          if (['left', 'center'].includes(d.titleAlign)) cur.titleAlign = d.titleAlign;
+          if (['small', 'big', 'none'].includes(d.coverFlags)) cur.coverFlags = d.coverFlags;
+          await writeFile(file, JSON.stringify(cur, null, 2) + '\n', 'utf8');
+          ok = true;
+        } catch {}
+        res.writeHead(ok ? 200 : 400, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ ok }));
+      }
       if (p === '/__desk/meta' && req.method === 'POST') {
         let body = '';
         for await (const chunk of req) body += chunk;

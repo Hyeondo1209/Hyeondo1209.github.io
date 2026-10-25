@@ -9,6 +9,17 @@
 // ─────────────────────────────────────────────────────────────
 import { findMark, blankOut } from '/__desk/marks-match.mjs';
 
+// 미리보기에서 정해 두고 아직 올리지 않은 보기 설정을 모든 페이지에 적용
+try {
+  const kept = JSON.parse(sessionStorage.getItem('desk-settings') || 'null');
+  if (kept) {
+    const html = document.documentElement;
+    if (kept.coverScale) html.style.setProperty('--cover-scale', String(kept.coverScale));
+    if (kept.titleAlign) html.dataset.titleAlign = kept.titleAlign;
+    if (kept.coverFlags) html.dataset.coverFlags = kept.coverFlags;
+  }
+} catch {}
+
 const slug = decodeURIComponent((location.pathname.match(/^\/notes\/([^/]+)\/?$/) || [])[1] || '');
 
 const TOOLS = [
@@ -42,6 +53,9 @@ const css = `
 .desk-panel a{color:#0000ee;text-decoration:underline;cursor:pointer}
 .desk-panel .desk-err{color:#d4202c}
 .desk-vis{margin-top:20px}
+.desk-size{margin-top:16px}
+.desk-size input[type=range]{width:100%;margin:6px 0 2px}
+.desk-size .desk-size__val{float:right;font-weight:bold}
 .desk-vis label{display:block;margin-top:6px;font-size:12px;color:#444}
 .desk-vis input::placeholder{color:#b0b0b0;font-style:italic}
 .desk-vis input{box-sizing:border-box;width:100%;font:12px/18px GulimChe,'굴림체','Seorap Gulim',monospace;padding:1px 4px;border:1px solid;border-color:#808080 #fff #fff #808080;background:#fff}
@@ -135,6 +149,12 @@ async function start() {
   const body = document.createElement('div');
   body.className = 'desk-body';
   body.append(markBox, visBox);
+  if (document.querySelector('.reports')) {
+    const sizeBox = document.createElement('div');
+    sizeBox.className = 'desk-size';
+    body.insertBefore(sizeBox, visBox);
+    setupSize(sizeBox);
+  }
   const foot = document.createElement('div');
   foot.className = 'desk-body desk-foot';
   foot.append(decideBox);
@@ -426,6 +446,78 @@ async function start() {
     });
     input.addEventListener('blur', () => finish(true));
     input.focus();
+  });
+}
+
+// ── 보기 설정: 실제 화면에서 바꿔 보고 정함 (종이 크기, 제목 정렬, 첫 화면 인덱스) ──
+function setupSize(box) {
+  const html = document.documentElement;
+  const read = () => ({
+    coverScale: parseFloat(getComputedStyle(html).getPropertyValue('--cover-scale')) || 0.68,
+    titleAlign: html.dataset.titleAlign || 'left',
+    coverFlags: html.dataset.coverFlags || 'small',
+  });
+  const apply = (st) => {
+    html.style.setProperty('--cover-scale', String(st.coverScale));
+    html.dataset.titleAlign = st.titleAlign;
+    html.dataset.coverFlags = st.coverFlags;
+  };
+  let saved = read();
+  // 정해 놓고 아직 올리지 않은 설정 (새로고침해도 유지)
+  try {
+    const kept = JSON.parse(sessionStorage.getItem('desk-settings') || 'null');
+    if (kept) {
+      saved = { ...saved, ...kept };
+      apply(saved);
+    }
+  } catch {}
+  let cur = { ...saved };
+  let msg = '';
+  const opt = (key, value, label) =>
+    cur[key] === value ? `<b>${label}</b>` : `<a data-key="${key}" data-value="${value}">${label}</a>`;
+  const draw = () => {
+    const changed = JSON.stringify(cur) !== JSON.stringify(saved);
+    box.innerHTML = `<b>보기 설정</b>
+      <div style="margin-top:6px">첫 화면 종이 크기<span class="desk-size__val">${Math.round(cur.coverScale * 100)}%</span></div>
+      <input type="range" min="0.4" max="1" step="0.02" value="${cur.coverScale}">
+      <div>제목 정렬: ${opt('titleAlign', 'left', '왼쪽')} · ${opt('titleAlign', 'center', '가운데')}</div>
+      <div>첫 화면 인덱스: ${opt('coverFlags', 'small', '작게')} · ${opt('coverFlags', 'big', '크게')} · ${opt('coverFlags', 'none', '숨김')}</div>
+      <button class="desk-btn" type="button" data-pick${changed ? '' : ' disabled'}>이대로 정하기</button>
+      <div class="desk-note">${msg}</div>`;
+  };
+  draw();
+  box.addEventListener('input', (e) => {
+    if (e.target.type !== 'range') return;
+    cur.coverScale = Number(e.target.value);
+    apply(cur);
+    box.querySelector('.desk-size__val').textContent = `${Math.round(cur.coverScale * 100)}%`;
+    const b = box.querySelector('button[data-pick]');
+    b.disabled = JSON.stringify(cur) === JSON.stringify(saved);
+  });
+  box.addEventListener('click', async (e) => {
+    const a = e.target.closest('a[data-key]');
+    if (a) {
+      cur[a.dataset.key] = a.dataset.value;
+      apply(cur);
+      msg = '';
+      // 장 나누기를 다시 (제목 크기·정렬이 바뀌면 장이 달라질 수 있음)
+      window.__deskPages?.run();
+      return draw();
+    }
+    if (!e.target.closest('button[data-pick]')) return;
+    let ok = false;
+    try {
+      ok = (await fetch('/__desk/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cur) })).ok;
+    } catch {}
+    if (ok) {
+      saved = { ...cur };
+      try {
+        sessionStorage.setItem('desk-settings', JSON.stringify(saved));
+      } catch {}
+    }
+    msg = ok ? '정했어요. 올리기를 누르면 반영돼요.' : '<span class="desk-err">저장하지 못했어요.</span>';
+    draw();
+    window.dispatchEvent(new Event('desk:saved'));
   });
 }
 
