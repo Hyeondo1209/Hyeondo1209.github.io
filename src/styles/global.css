@@ -262,11 +262,12 @@ th strong { font-weight: bold; }
   box-shadow: var(--sheet-shadow), 5px 5px 0 -0.5px var(--paper-now), 5px 5px 0 0 rgb(0 0 0 / 0.08);
 }
 /* 첫 화면: 마우스를 올리면 종이가 살짝 들림 */
-.report[data-mode='cover'] .sheet { transition: transform 0.25s ease, filter 0.25s ease; }
-.report[data-mode='cover']:hover .sheet {
-  transform: translateY(-6px) rotate(-0.4deg);
-  filter: drop-shadow(0 18px 18px rgb(0 0 0 / 0.14));
-}
+.report[data-mode='cover'] .sheet { transition: transform 0.25s ease; }
+.report[data-mode='cover']:hover .sheet { transform: translateY(-6px) rotate(-0.4deg); }
+/* 들린 그림자는 종이·인덱스·끼운 메모를 한 덩어리로 보고 그 윤곽 바깥(책상)에만 짐.
+   종이에 주면 그 아래 깔린 메모 위에 그림자가 따로 져서 어색함 */
+.report[data-mode='cover'] { transition: filter 0.25s ease; }
+.report[data-mode='cover']:hover { filter: drop-shadow(0 18px 18px rgb(0 0 0 / 0.14)); }
 /* 누르면: 그 종이가 커지며 글 페이지 첫 장 자리로 (src/scripts/desk-open.ts) */
 .desk-fly {
   position: fixed;
@@ -281,7 +282,7 @@ html.desk-arrive .report[data-mode='full'] .sheet:not(:first-child) { animation:
 html.desk-arrive .report__margin .memo { animation: desk-in 0.6s 0.25s both ease; }
 @keyframes desk-in { from { opacity: 0; transform: translateY(-24px); } }
 @media (prefers-reduced-motion: reduce) {
-  .report[data-mode='cover'] .sheet, .desk-fly { transition: none; }
+  .report[data-mode='cover'], .report[data-mode='cover'] .sheet, .report__peeks, .desk-fly { transition: none; }
   html.desk-arrive .report[data-mode='full'] .sheet, html.desk-arrive .report__margin .memo { animation: none; }
 }
 
