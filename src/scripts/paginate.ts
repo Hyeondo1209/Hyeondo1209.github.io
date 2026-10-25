@@ -160,6 +160,9 @@ function paginate(report: HTMLElement, template: HTMLElement) {
   }
 
   const src = template.cloneNode(true) as HTMLElement;
+  // 여백 메모는 본문 흐름에서 빼고, 장을 다 나눈 뒤 오른쪽 여백에 붙임
+  const memos = src.querySelector('.memos');
+  memos?.remove();
   // 날짜는 본문 흐름에서 빼서 첫 장 오른쪽 위에 따로 붙임
   const date = src.querySelector('.report__date');
   date?.remove();
@@ -221,6 +224,63 @@ function paginate(report: HTMLElement, template: HTMLElement) {
     sheets.slice(1).forEach((s) => s.remove());
   }
   report.classList.toggle('is-shrunk', shrink);
+  placeMemos(report, mode === 'full' && !narrow ? memos : null);
+}
+
+// ── 여백 메모: 메모가 붙은 문장 높이에, 겹치면 아래로 ──────────────
+function hash(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+/** 찢은 종이의 윗변: 메모마다 다르지만 매번 같은 모양 */
+function tearEdge(id: string) {
+  let seed = hash(id);
+  const rand = () => ((seed = Math.imul(seed ^ (seed >>> 15), 2246822507) >>> 0) % 1000) / 1000;
+  const pts: string[] = [];
+  for (let x = 0; x <= 100; x += 1.25) pts.push(`${x}% ${(1 + rand() * 7 + (x % 10 === 0 ? 2 : 0)).toFixed(1)}px`);
+  return `polygon(${pts.join(', ')}, 100% 100%, 0% 100%)`;
+}
+function placeMemos(report: HTMLElement, memos: Element | null) {
+  report.querySelector('.report__margin')?.remove();
+  if (!memos || !memos.children.length) return;
+  const layer = document.createElement('div');
+  layer.className = 'report__margin';
+  report.append(layer);
+  const top0 = report.getBoundingClientRect().top;
+  const pages = report.querySelector('.report__pages')!;
+  const flags = report.querySelector('.flags');
+  let floor = flags ? flags.getBoundingClientRect().bottom - top0 + 20 : 0;
+
+  const items = Array.from(memos.children).map((m) => {
+    const id = (m as HTMLElement).dataset.memo || '';
+    const at = pages.querySelector(`[data-memo="${CSS.escape(id)}"]`);
+    return { m: m.cloneNode(true) as HTMLElement, id, y: at ? at.getBoundingClientRect().top - top0 - 4 : Infinity };
+  });
+  items.sort((a, b) => a.y - b.y);
+  for (const { m, id, y } of items) {
+    const h = hash(id);
+    m.style.setProperty('--tilt', `${((h % 7) - 3) * 0.45}deg`);
+    m.style.setProperty('--nudge', `${(h >> 3) % 14}px`);
+    if (m.classList.contains('memo--paper')) m.style.setProperty('--tear', tearEdge(id));
+    layer.append(m);
+    const top = Math.max(Number.isFinite(y) ? y : floor, floor);
+    m.style.top = `${Math.round(top)}px`;
+    floor = top + m.offsetHeight + 14;
+  }
+  // 메모가 마지막 장보다 길게 이어지면 그만큼 자리를 늘림
+  report.style.minHeight = floor > report.offsetHeight ? `${Math.ceil(floor + 24)}px` : '';
+  // 메모와 문장을 함께 밝히기
+  const light = (id: string, on: boolean) =>
+    report.querySelectorAll(`[data-memo="${CSS.escape(id)}"]`).forEach((el) => el.classList.toggle('is-lit', on));
+  layer.querySelectorAll<HTMLElement>('.memo').forEach((m) => {
+    m.addEventListener('mouseenter', () => light(m.dataset.memo!, true));
+    m.addEventListener('mouseleave', () => light(m.dataset.memo!, false));
+  });
+  pages.querySelectorAll<HTMLElement>('.memo-text').forEach((t) => {
+    t.addEventListener('mouseenter', () => light(t.dataset.memo!, true));
+    t.addEventListener('mouseleave', () => light(t.dataset.memo!, false));
+  });
 }
 
 function init() {

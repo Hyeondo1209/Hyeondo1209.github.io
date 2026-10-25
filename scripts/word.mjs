@@ -25,6 +25,9 @@
 //   수식 편집기             → 수식 (흔한 구조만. 안 되면 원고에 $...$ 로 직접)
 //   하이퍼링크              → 링크
 //
+// Word 메모(검토 → 새 메모)  → 오른쪽 여백의 메모. 짧으면 포스트잇, 길면 찢은 공책 종이.
+//                             메모 맨 앞에 [포스트잇] 이나 [공책] 이라고 쓰면 종이를 직접 고름.
+//
 // 웹에서 한 표시(형광펜, 빨간 펜, 연필, 수정테이프)는 원고 폴더의 .표시 폴더에 따로 저장되고,
 // 변환할 때 문장 인용 방식으로 다시 찾아 붙입니다(marks-match.mjs).
 // 수정테이프는 글자 자체를 빼고 폭만 남기므로, 가린 글자는 사이트 파일 어디에도 남지 않습니다.
@@ -192,7 +195,7 @@ function runFormat(r, paraStyleBold) {
   f.sub = va === 'subscript';
   return f;
 }
-const FMT_KEYS = ['b', 'i', 'hl', 'red', 'sup', 'sub', 'link', 'pencil', 'tape', 'hlId', 'redId', 'pencilId', 'tapeId'];
+const FMT_KEYS = ['b', 'i', 'hl', 'red', 'sup', 'sub', 'link', 'memo', 'pencil', 'tape', 'hlId', 'redId', 'pencilId', 'tapeId'];
 const sameFmt = (a, b) => FMT_KEYS.every((k) => (a[k] || false) === (b[k] || false));
 const dataM = (id) => (id ? ` data-m="${escAttr(id)}"` : '');
 
@@ -234,6 +237,7 @@ function renderSegments(segs, { html = false } = {}) {
     if (f.red) core = `<span class="red-pen"${dataM(f.redId)}>${core}</span>`;
     if (f.hl) core = `<mark${dataM(f.hlId)}>${core}</mark>`;
     if (f.link) core = `<a href="${escAttr(f.link)}">${core}</a>`;
+    if (f.memo) core = `<span class="memo-text" data-memo="${escAttr(f.memo)}">${core}</span>`;
     out += lead + core + trail;
   }
   return out;
@@ -388,6 +392,7 @@ export async function convertDocx(buffer, { fileName = '원고.docx', marks = []
   if (relDoc) for (const r of Array.from(relDoc.getElementsByTagName('Relationship'))) rels[r.getAttribute('Id')] = { target: r.getAttribute('Target'), mode: r.getAttribute('TargetMode') };
   const numbering = await read('word/numbering.xml');
   const fnDoc = await read('word/footnotes.xml');
+  const cmDoc = await read('word/comments.xml');
   const enDoc = await read('word/endnotes.xml');
 
   const warnings = [];
@@ -423,14 +428,30 @@ export async function convertDocx(buffer, { fileName = '원고.docx', marks = []
     return `![](./${name})`;
   }
 
+  // 지금 메모가 걸려 있는 범위 (문단을 넘어갈 수 있음)
+  const openMemos = [];
+
   // 문단 안의 글자들을 조각으로
   async function inlineSegs(p, ctx) {
     const segs = [];
     const paraBold = ctx.paraBold;
     async function walk(node, link) {
       for (const n of kids(node)) {
+        if (isW(n, 'commentRangeStart')) {
+          if (ctx.memos === false) continue;
+          const id = 'c' + wAttr(n, 'id');
+          openMemos.push(id);
+          segs.push({ kind: 'raw', md: `<span class="memo-at" data-memo="${id}"></span>` });
+          continue;
+        }
+        if (isW(n, 'commentRangeEnd')) {
+          const i = openMemos.indexOf('c' + wAttr(n, 'id'));
+          if (i >= 0) openMemos.splice(i, 1);
+          continue;
+        }
         if (isW(n, 'r')) {
-          const f = { ...runFormat(n, paraBold), link };
+          const memo = ctx.memos === false ? null : openMemos[openMemos.length - 1] || null;
+          const f = { ...runFormat(n, paraBold), link, memo };
           for (const c of kids(n)) {
             if (isW(c, 't')) segs.push({ kind: 'text', text: c.textContent, f });
             else if (isW(c, 'tab')) segs.push({ kind: 'text', text: ' ', f });
@@ -517,7 +538,7 @@ export async function convertDocx(buffer, { fileName = '원고.docx', marks = []
     const src = n.kind === 'f' ? fnDoc : enDoc;
     const el = src && descendants(src, NS.w, n.kind === 'f' ? 'footnote' : 'endnote').find((x) => wAttr(x, 'id') === n.id);
     const paras = [];
-    if (el) for (const p of kids(el).filter((c) => isW(c, 'p'))) paras.push({ segs: await inlineSegs(p, { paraBold: false }) });
+    if (el) for (const p of kids(el).filter((c) => isW(c, 'p'))) paras.push({ segs: await inlineSegs(p, { paraBold: false, memos: false }) });
     noteParas.push(paras);
   }
 
@@ -698,6 +719,30 @@ export async function convertDocx(buffer, { fileName = '원고.docx', marks = []
     const text = paras.map((x) => renderSegments(x.segs).trim()).filter(Boolean).join(' ');
     noteMd.push(`[^${i + 1}]: ${text || ' '}`);
   }
+
+  // ── 6단계: Word 메모 → 여백 메모 ──
+  const memoHtml = [];
+  if (cmDoc) {
+    for (const c of descendants(cmDoc, NS.w, 'comment')) {
+      const paras = [];
+      for (const p of kids(c).filter((x) => isW(x, 'p'))) {
+        const segs = await inlineSegs(p, { paraBold: false, memos: false });
+        const html = renderSegments(segs.filter((x) => x.kind === 'text' || x.md === '<br>'), { html: true }).trim();
+        if (html) paras.push(html);
+      }
+      if (!paras.length) continue;
+      let kind = '';
+      const pick = paras[0].match(/^\[(포스트잇|공책|종이)\]\s*/);
+      if (pick) {
+        kind = pick[1] === '포스트잇' ? 'postit' : 'paper';
+        paras[0] = paras[0].slice(pick[0].length);
+      }
+      const len = paras.join('').replace(/<[^>]+>/g, '').length;
+      if (!kind) kind = len <= 90 ? 'postit' : 'paper';
+      memoHtml.push(`<div class="memo memo--${kind}" data-memo="c${wAttr(c, 'id')}">${paras.map((x) => `<p>${x}</p>`).join('')}</div>`);
+    }
+  }
+  if (memoHtml.length) out.push(`<aside class="memos" aria-label="여백 메모">\n${memoHtml.join('\n')}\n</aside>`);
 
   const bodyMd = out.join('\n\n') + (noteMd.length ? '\n\n' + noteMd.join('\n') : '') + '\n';
   return { title, subtitle, titleHtml, subtitleHtml, meta, body: bodyMd, images, warnings, marks: markResult };

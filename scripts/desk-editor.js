@@ -33,7 +33,12 @@ const css = `
 .desk-tb[hidden]{display:none}
 .desk-tb i{display:inline-block;width:12px;height:10px}
 .desk-tb .desk-msg{padding:4px 7px}
-.desk-panel{position:fixed;top:24px;z-index:999;width:220px;font:13px/20px GulimChe,'굴림체','Seorap Gulim',monospace;color:#000}
+.desk-panel{position:fixed;right:16px;bottom:16px;z-index:999;width:240px;font:13px/20px GulimChe,'굴림체','Seorap Gulim',monospace;color:#000;
+  background:#c0c0c0;padding:3px;border:1px solid;border-color:#fff #404040 #404040 #fff;box-shadow:1px 1px 0 #000}
+.desk-title{display:flex;justify-content:space-between;align-items:center;padding:1px 2px 1px 6px;background:#000080;color:#fff;font-weight:bold;user-select:none}
+.desk-title button{all:unset;width:16px;height:14px;line-height:12px;text-align:center;color:#000;background:#c0c0c0;border:1px solid;border-color:#fff #404040 #404040 #fff;font-size:12px}
+.desk-body{margin-top:3px;padding:8px 10px;max-height:62vh;overflow:auto;background:#fff;border:1px solid;border-color:#808080 #fff #fff #808080}
+.desk-panel.is-min .desk-body{display:none}
 .desk-panel a{color:#0000ee;text-decoration:underline;cursor:pointer}
 .desk-panel .desk-err{color:#d4202c}
 .desk-vis{margin-top:20px}
@@ -59,7 +64,7 @@ function textInfo(el) {
 }
 function leaves(root) {
   return Array.from(root.querySelectorAll(LEAF)).filter(
-    (el) => !el.querySelector(LEAF) && !el.closest('.report__date') && !el.matches('section[data-footnotes] > h2'),
+    (el) => !el.querySelector(LEAF) && !el.closest('.report__date, .memos, .report__margin') && !el.matches('section[data-footnotes] > h2'),
   );
 }
 const leafOf = (node) => (node?.nodeType === 3 ? node.parentElement : node)?.closest?.(LEAF) || null;
@@ -116,19 +121,28 @@ async function start() {
   visBox.className = 'desk-vis';
   const decideBox = document.createElement('div');
   decideBox.className = 'desk-decide';
-  panel.append(markBox, visBox, decideBox);
+  const titleBar = document.createElement('div');
+  titleBar.className = 'desk-title';
+  titleBar.innerHTML = '<span>미리보기</span><button type="button" title="접기 / 펼치기">_</button>';
+  const body = document.createElement('div');
+  body.className = 'desk-body';
+  body.append(markBox, visBox, decideBox);
+  panel.append(titleBar, body);
   document.body.append(panel);
+  try {
+    if (localStorage.getItem('desk-panel-min') === '1') panel.classList.add('is-min');
+  } catch {}
+  titleBar.querySelector('button').addEventListener('click', () => {
+    panel.classList.toggle('is-min');
+    try {
+      localStorage.setItem('desk-panel-min', panel.classList.contains('is-min') ? '1' : '0');
+    } catch {}
+  });
   setupDecide(decideBox, visBox, () => {
     // 올리기를 고르면 더는 표시하지 않음
     window.dispatchEvent(new Event('desk:locked'));
   });
-  const placePanel = () => {
-    const sheet = document.querySelector('.sheet');
-    const right = sheet ? sheet.getBoundingClientRect().right : document.documentElement.clientWidth - 260;
-    panel.style.left = `${Math.round(right + 40)}px`;
-  };
-  placePanel();
-  window.addEventListener('resize', () => setTimeout(placePanel, 200));
+  const placePanel = () => {}; // 오른쪽 아래에 떠 있는 창 (여백 메모를 가리지 않게)
 
   if (!slug || !template) {
     markBox.innerHTML = '<b>미리보기</b><br>글을 열면 표시하기를<br>쓸 수 있어요.';
