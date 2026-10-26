@@ -234,40 +234,74 @@ th strong { font-weight: bold; }
 .report[data-staple='3'] { --staple-img: url('/scan/staple-3.webp'); }
 .report[data-staple='4'] { --staple-img: url('/scan/staple-4.webp'); }
 
-/* 둘째 장부터: 앞장을 넘긴 흔적으로 왼쪽 위 모서리가 접힘 (임시 CSS) */
+/* 둘째 장부터: 앞장을 뒤로 넘긴 흔적으로 왼쪽 위 모서리가 접힘 (직접 찍은 사진 5장. public/scan/fold-*)
+   fold-N.webp: 색 = 접힌 곳의 그늘(multiply), 투명도 = 종이 윤곽(mask). fold-N-edge.webp: 왼쪽 가장자리를 따라 이어지는 겹친 종이 그늘.
+   장마다 5장 중 하나 (돌려 씀) */
 .report[data-mode='full'] .sheet:not(:first-child) {
-  --fold: 44px;
-  clip-path: polygon(var(--fold) 0, 100% 0, 100% 100%, 0 100%, 0 var(--fold));
+  --fold-img: url('/scan/fold-0.webp');
+  --fold-edge: url('/scan/fold-0-edge.webp');
+  -webkit-mask:
+    var(--fold-img) 0 0 / 216px 113px no-repeat,
+    linear-gradient(#000 0 0) 216px 0 / 100% 100% no-repeat,
+    linear-gradient(#000 0 0) 0 113px / 100% 100% no-repeat;
+  mask:
+    var(--fold-img) 0 0 / 216px 113px no-repeat,
+    linear-gradient(#000 0 0) 216px 0 / 100% 100% no-repeat,
+    linear-gradient(#000 0 0) 0 113px / 100% 100% no-repeat;
 }
+.report[data-mode='full'] .sheet:nth-child(5n + 3) { --fold-img: url('/scan/fold-1.webp'); --fold-edge: url('/scan/fold-1-edge.webp'); }
+.report[data-mode='full'] .sheet:nth-child(5n + 4) { --fold-img: url('/scan/fold-2.webp'); --fold-edge: url('/scan/fold-2-edge.webp'); }
+.report[data-mode='full'] .sheet:nth-child(5n + 5) { --fold-img: url('/scan/fold-3.webp'); --fold-edge: url('/scan/fold-3-edge.webp'); }
+.report[data-mode='full'] .sheet:nth-child(5n + 6) { --fold-img: url('/scan/fold-4.webp'); --fold-edge: url('/scan/fold-4-edge.webp'); }
 .report[data-mode='full'] .sheet:not(:first-child)::before {
   content: '';
   position: absolute;
   left: 0;
   top: 0;
-  width: calc(var(--fold) + 4px);
-  height: calc(var(--fold) + 4px);
+  bottom: 0;
+  width: 216px;
   z-index: 2;
+  pointer-events: none;
+  mix-blend-mode: multiply;
   background:
-    /* 접혀 넘어온 종이 뒷면: 접힌 선 쪽이 조금 더 어둡고, 끝으로 갈수록 밝아짐 */
-    linear-gradient(to bottom right, transparent 50%, rgb(255 255 255 / 0.7) 50%, rgb(0 0 0 / 0.10) calc(50% + 1px), rgb(0 0 0 / 0.04) 100%) 0 0 / var(--fold) var(--fold) no-repeat,
-    /* 접힌 종이가 만드는 그림자 */
-    linear-gradient(to bottom right, transparent 50%, rgb(0 0 0 / 0.07) 50%, rgb(0 0 0 / 0) 100%) 2px 2px / var(--fold) var(--fold) no-repeat,
-    linear-gradient(to bottom right, transparent 50%, rgb(0 0 0 / 0.05) 50%, rgb(0 0 0 / 0) 100%) 4px 4px / var(--fold) var(--fold) no-repeat;
+    var(--fold-img) 0 0 / 216px 113px no-repeat,
+    var(--fold-edge) 0 113px / 26.5px auto no-repeat;
 }
 
-/* 첫 화면: 뒷장이 있으면 종이가 겹쳐 보임 */
-.report[data-mode='cover'].is-stapled .sheet {
-  box-shadow:
-    var(--sheet-shadow),
-    5px 5px 0 -0.5px var(--paper-now), 5px 5px 0 0 rgb(0 0 0 / 0.08),
-    10px 10px 0 -0.5px var(--paper-now), 10px 10px 0 0 rgb(0 0 0 / 0.07);
+/* 첫 화면: 뒷장이 있으면 맨 위 장 오른쪽·아래로 뒷장들의 가장자리가 겹쳐 보임
+   (직접 찍은 종이 묶음 사진에서 딴 가장자리. public/scan/stack-*: -mask = 종이 윤곽, -shade = 겹친 결과 그림자) */
+.report[data-mode='cover'].is-stapled .report__pages::before,
+.report[data-mode='cover'].is-stapled .report__pages::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--sheet-w) + 22px);
+  height: calc(var(--sheet-h) + 22px);
+  z-index: -1;
+  pointer-events: none;
 }
-.report[data-mode='cover'][data-pages='2'] .sheet {
-  box-shadow: var(--sheet-shadow), 5px 5px 0 -0.5px var(--paper-now), 5px 5px 0 0 rgb(0 0 0 / 0.08);
+.report[data-mode='cover'].is-stapled .report__pages::before {
+  background: var(--paper-now);
+  -webkit-mask:
+    url('/scan/stack-right-mask.webp') var(--sheet-w) 0 / 21.5px 1125px no-repeat,
+    url('/scan/stack-bottom-mask.webp') 0 var(--sheet-h) / 796px 21.5px no-repeat,
+    url('/scan/stack-corner-mask.webp') var(--sheet-w) var(--sheet-h) / 21.5px 21.5px no-repeat;
+  mask:
+    url('/scan/stack-right-mask.webp') var(--sheet-w) 0 / 21.5px 1125px no-repeat,
+    url('/scan/stack-bottom-mask.webp') 0 var(--sheet-h) / 796px 21.5px no-repeat,
+    url('/scan/stack-corner-mask.webp') var(--sheet-w) var(--sheet-h) / 21.5px 21.5px no-repeat;
 }
-/* 첫 화면: 마우스를 올리면 종이가 살짝 들림 */
-.report[data-mode='cover'] .sheet { transition: transform 0.25s ease; }
-.report[data-mode='cover']:hover .sheet { transform: translateY(-6px) rotate(-0.4deg); }
+.report[data-mode='cover'].is-stapled .report__pages::after {
+  mix-blend-mode: multiply;
+  background:
+    url('/scan/stack-right-shade.webp') var(--sheet-w) 0 / 21.5px 1125px no-repeat,
+    url('/scan/stack-bottom-shade.webp') 0 var(--sheet-h) / 796px 21.5px no-repeat,
+    url('/scan/stack-corner-shade.webp') var(--sheet-w) var(--sheet-h) / 21.5px 21.5px no-repeat;
+}
+/* 첫 화면: 마우스를 올리면 묶음째 살짝 들림 (맨 위 장과 뒷장 가장자리가 함께) */
+.report[data-mode='cover'] .report__pages { transition: transform 0.25s ease; transform-origin: calc(var(--sheet-w) / 2) calc(var(--sheet-h) / 2); }
+.report[data-mode='cover']:hover .report__pages { transform: translateY(-6px) rotate(-0.4deg); }
 /* 들린 그림자는 종이·인덱스·끼운 메모를 한 덩어리로 보고 그 윤곽 바깥(책상)에만 짐.
    종이에 주면 그 아래 깔린 메모 위에 그림자가 따로 져서 어색함 */
 .report[data-mode='cover'] { transition: filter 0.25s ease; }
@@ -286,7 +320,7 @@ html.desk-arrive .report[data-mode='full'] .sheet:not(:first-child) { animation:
 html.desk-arrive .report__margin .memo { animation: desk-in 0.6s 0.25s both ease; }
 @keyframes desk-in { from { opacity: 0; transform: translateY(-24px); } }
 @media (prefers-reduced-motion: reduce) {
-  .report[data-mode='cover'], .report[data-mode='cover'] .sheet, .report__peeks, .desk-fly { transition: none; }
+  .report[data-mode='cover'], .report[data-mode='cover'] .report__pages, .report__peeks, .desk-fly { transition: none; }
   html.desk-arrive .report[data-mode='full'] .sheet, html.desk-arrive .report__margin .memo { animation: none; }
 }
 
@@ -314,11 +348,11 @@ blockquote .is-split, blockquote.is-split { text-align-last: justify; }
 .is-continued { padding-top: 0; }
 li.is-continued { list-style: none; }
 
-/* ── 인덱스: 실사 스캔 (public/scan/flag-cap-*, flag-body-*) ──
-   종이 위에 붙는 투명 필름(왼쪽, 모서리 둥글게, 거의 안 보임) + 종이 밖으로 나온 색 부분(스캔 결 그대로, 끝은 스캔한 둥근 끝).
-   분류 이름은 색 부분에 씀. multiply 합성이라 종이에 겹친 부분은 종이 가장자리가 비쳐 보임.
+/* ── 인덱스: 직접 찍은 사진에서 (public/scan/flag-cap-*, flag-body-*) ──
+   인덱스 전체가 뿌연 반투명 필름(::before), 종이 밖으로 나온 쪽은 반투명한 색 필름(::after).
+   분류 이름은 색 부분에 씀. 종이에 겹친 부분은 아래 종이 가장자리가 비쳐 보임.
    --fs: 크기 배율 (첫 화면 '크게'에서는 종이를 줄여도 글 페이지 크기 그대로) */
-.report { --fs: 1; --flag-film: 42px; --flag-color: 68px; --flag-h: 34px; --flag-cap: 11px; --flag-overlap: 6px; }
+.report { --fs: 1; --flag-film: 42px; --flag-color: 68px; --flag-h: 34px; --flag-cap: 15px; --flag-overlap: 6px; }
 .flags {
   position: absolute;
   top: calc(var(--pad) * 0.9);
@@ -339,33 +373,45 @@ li.is-continued { list-style: none; }
   padding: 0 0 0 calc((var(--flag-film) + 9px) * var(--fs));
   font-size: calc(12px * var(--fs));
   line-height: calc(var(--flag-h) * var(--fs));
-  color: #161616;
+  color: #1b1b1b;
   text-decoration: none;
   white-space: nowrap;
-  overflow: hidden;
-  mix-blend-mode: multiply;
-  background:
-    var(--cap) right center / auto 100% no-repeat,
-    var(--body) calc(var(--flag-film) * var(--fs)) 0 / calc(100% - (var(--flag-film) + var(--flag-cap)) * var(--fs) + 1px) 100% no-repeat;
-  filter: drop-shadow(0 0.5px 0.6px rgb(0 0 0 / 0.10));
+  isolation: isolate;
   transform: rotate(var(--tilt, -0.6deg));
 }
-/* 투명 필름의 가장자리: 아주 옅게, 모서리 둥글게 */
+/* 투명 필름 (인덱스 전체): 뿌옇게 비치는 반투명. 아래 종이·가장자리를 살짝 흐리고 밝게 덮음. 모서리 둥글게 */
 .flag::before {
   content: '';
   position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: calc(var(--flag-film) * var(--fs) + 1px);
-  border: 1px solid rgb(0 0 0 / 0.06);
-  border-right: 0;
-  border-radius: calc(4px * var(--fs)) 0 0 calc(4px * var(--fs));
-  background: rgb(0 0 0 / 0.012);
+  inset: 0;
+  z-index: -2;
+  border-radius: calc(4px * var(--fs));
+  background: rgb(255 255 255 / 0.42);
+  -webkit-backdrop-filter: blur(0.7px) brightness(1.02);
+  backdrop-filter: blur(0.7px) brightness(1.02);
+  border: 1px solid rgb(255 255 255 / 0.85);
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.07);
+}
+/* 색 부분: 사진에서 딴 색 필름. 86%만 덮어서 아래(종이 가장자리 등)가 살짝 비침 + 좁고 옅은 그림자 */
+.flag::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--flag-film) * var(--fs));
+  right: 0;
+  z-index: -1;
+  background:
+    var(--cap) right center / auto 100% no-repeat,
+    var(--body) 0 0 / calc(100% - var(--flag-cap) * var(--fs) * 0.7) 100% no-repeat;
+  opacity: 0.86;
+  filter: drop-shadow(0.4px 0.8px 0.9px rgb(0 0 0 / 0.16));
 }
 /* 하나씩 손으로 붙인 것처럼: 기울기·위치가 조금씩 다름 */
 .flags li:nth-child(2n) .flag { --tilt: 0.9deg; translate: 3px 0; }
 .flags li:nth-child(3n) .flag { --tilt: -0.7deg; translate: -2px 0; }
-.flag:hover { filter: drop-shadow(0 0.5px 0.6px rgb(0 0 0 / 0.10)) saturate(1.2); }
-/* 노랑·분홍·파랑은 스캔한 색 그대로, 초록·주황은 스캔 색을 바꿔 만듦 */
+.flag:hover::after { filter: drop-shadow(0.4px 0.8px 0.9px rgb(0 0 0 / 0.16)) saturate(1.2); }
+/* 색은 직접 찍은 인덱스 사진에서 땀 (노랑·분홍·파랑). 초록·주황은 사진 색을 바꿔 만듦 */
 .flag--yellow { --cap: url('/scan/flag-cap-yellow.webp'); --body: url('/scan/flag-body-yellow.webp'); }
 .flag--pink   { --cap: url('/scan/flag-cap-pink.webp');   --body: url('/scan/flag-body-pink.webp'); }
 .flag--blue   { --cap: url('/scan/flag-cap-blue.webp');   --body: url('/scan/flag-body-blue.webp'); }
@@ -427,17 +473,26 @@ sup a[data-footnote-ref]::after { content: ']'; }
 .memo p + p { margin-top: 20px; }
 .memo.is-lit { transform: rotate(0deg) translateY(-1px); }
 
-/* 포스트잇: 노란 정사각 메모, 위쪽은 접착 부분이라 살짝 진함 */
+/* 포스트잇: 직접 찍은 사진 3장 (public/scan/memo-postit-*). 가장자리 들뜸·말림·결과 바닥 그림자는 사진 그대로,
+   색은 예전 CSS의 따뜻한 노랑(위 #fff6a8 → 아래 #fdeb85). 그림자까지 담느라 그림이 메모보다 조금 큼(--pm) */
 .memo--postit {
+  --pm: 17px;
+  --postit: url('/scan/memo-postit-0.webp');
   width: 200px;
-  min-height: 132px;
+  min-height: 194px;
   padding: 18px 16px 16px;
-  background:
-    linear-gradient(to bottom, rgb(0 0 0 / 0.035) 0, rgb(0 0 0 / 0) 26px),
-    linear-gradient(170deg, #fff6a8 0%, #fdeb85 100%);
-  box-shadow: 0 1px 1px rgb(0 0 0 / 0.10), 0 6px 10px -6px rgb(0 0 0 / 0.30);
+  isolation: isolate;
 }
-.memo--postit.is-lit { box-shadow: 0 1px 1px rgb(0 0 0 / 0.12), 0 10px 14px -8px rgb(0 0 0 / 0.35); }
+.memo--postit::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--pm));
+  z-index: -1;
+  background: var(--postit) 0 0 / 100% 100% no-repeat;
+}
+.memo--postit[data-skin='1'] { --pm: 17.5px; --postit: url('/scan/memo-postit-1.webp'); }
+.memo--postit[data-skin='2'] { --pm: 19px; --postit: url('/scan/memo-postit-2.webp'); }
+.memo--postit.is-lit::before { filter: brightness(1.02); }
 
 /* 찢은 공책 종이: 스프링 수첩에서 뜯은 실사 스캔 3장 중 하나 (public/scan/memo-paper-*).
    줄은 파란 톤, 왼쪽 빨간 여백선, 아래에 Hyeondo Kim (스캔을 다듬어 넣음).
@@ -477,4 +532,4 @@ html[data-cover-flags='big'] .reports .report { --fs: calc(1 / var(--cover-scale
 /* 종이를 들면 사이에 끼운 메모도 같이 들림 (종이와 같은 중심, 같은 움직임) */
 .report[data-mode='cover']:hover .report__peeks { transform: translateY(-6px) rotate(-0.4deg); }
 .memo--peek { max-height: 220px; overflow: hidden; }
-.memo--peek.memo--postit { min-height: 120px; }
+.memo--peek.memo--postit { min-height: 160px; }

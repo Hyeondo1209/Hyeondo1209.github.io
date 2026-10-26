@@ -298,9 +298,9 @@ function hash(s: string) {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return h >>> 0;
 }
-/** 찢은 공책 메모마다 실사 스캔 3장 중 하나를 고름. 메모마다 다르지만 매번 같은 것 */
+/** 메모마다 실사(공책 스캔 3장, 포스트잇 사진 3장) 중 하나를 고름. 메모마다 다르지만 매번 같은 것 */
 function skin(el: HTMLElement, key: string) {
-  if (el.classList.contains('memo--paper')) el.dataset.skin = String(hash(key + 'skin') % 3);
+  el.dataset.skin = String(hash(key + 'skin') % 3);
 }
 function placeMemos(report: HTMLElement, memos: Element | null) {
   report.querySelector('.report__margin')?.remove();
