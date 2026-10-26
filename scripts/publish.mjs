@@ -3,7 +3,7 @@
 // desk 폴더의 "올리기.cmd" 를 더블클릭하면 이 파일이 실행됩니다.
 // ─────────────────────────────────────────────────────────────
 import { readdir, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
-import { existsSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,8 +19,16 @@ const PORT = 4322; // 미리보기 전용 (npm run dev 의 4321 과 겹치지 �
 const isWin = process.platform === 'win32';
 
 let sayHook = null; // 올리는 중에는 브라우저 미리보기에도 같은 내용을 보여줌
+// 검은 창에 나온 내용을 파일에도 남김 (문제가 생기면 Claude가 직접 읽을 수 있게. git에는 안 올라감)
+const LOG = path.join(ROOT, '사이트 만들기 기록.txt');
+const logLine = (s) => {
+  try {
+    appendFileSync(LOG, s + '\n');
+  } catch {}
+};
 const say = (s = '') => {
   console.log(s);
+  logLine(s);
   sayHook?.(s);
 };
 const line = () => say('─'.repeat(48));
@@ -372,14 +380,14 @@ function buildSite() {
   const astro = path.join(ROOT, 'node_modules', 'astro', 'bin', 'astro.mjs');
   const r = spawnSync(process.execPath, [astro, 'build'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   // 사이트 만들기 기록을 파일로 남김 (문제가 생기면 Claude가 직접 읽을 수 있게. git에는 안 올라감)
-  try {
-    const log = [`${new Date().toISOString()}  종료 코드: ${r.status}${r.error ? '  오류: ' + r.error.message : ''}`, '', r.stdout || '', r.stderr || ''].join('\n');
-    writeFileSync(path.join(ROOT, '사이트 만들기 기록.txt'), log);
-  } catch {}
+  logLine(['', `── 사이트 만들기 (종료 코드: ${r.status}${r.error ? ', 오류: ' + r.error.message : ''}) ──`, r.stdout || '', r.stderr || '', '── 끝 ──', ''].join('\n'));
   return r;
 }
 
 async function main() {
+  try {
+    writeFileSync(LOG, `올리기 시작: ${new Date().toLocaleString('ko-KR')}\n`);
+  } catch {}
   say();
   say('  Desk 올리기');
   line();
@@ -458,8 +466,7 @@ async function main() {
   }
 
   const changed = results.find((r) => !r.draft && (r.status === '새 글' || r.status === '고침'));
-  const local = `http://127.0.0.1:${PORT}`;
-  const previewUrl = local + (changed ? `/notes/${changed.slug}/` : '/');
+  const previewPath = changed ? `/notes/${changed.slug}/` : '/';
   let marksDirty = false; // 다시 변환해야 함 (표시, 날짜, 보이기 중 하나라도 바뀜)
   let marksEdited = false; // 표시·날짜가 바뀜
   const bySlug = new Map(results.filter((r) => r.slug && !r.draft && r.status !== '실패').map((r) => [r.slug, r.file]));
@@ -559,13 +566,18 @@ async function main() {
       return true;
     },
   };
-  const server = await servePreview(path.join(ROOT, 'dist'), PORT, api);
+  // 미리보기 자리(4322)가 이미 쓰이는 중이면(예전 검은 창이 아직 켜져 있는 등) 옆자리로
+  let server = null;
+  let port = PORT;
+  for (; port < PORT + 10 && !server; port++) server = await servePreview(path.join(ROOT, 'dist'), port, api);
+  port -= 1;
+  const previewUrl = `http://127.0.0.1:${port}${previewPath}`;
   if (server) {
     openInBrowser(previewUrl);
     say(`브라우저에서 미리보기를 확인하세요: ${previewUrl}`);
     say('올릴지는 미리보기 오른쪽의 버튼으로 고르거나, 여기에 y / n 을 눌러도 돼요.');
   } else {
-    say(`미리보기 창을 열지 못했어요(${PORT}번 자리가 이미 쓰이는 중). 사이트는 문제없이 만들어졌으니 올려도 괜찮아요.`);
+    say(`미리보기 창을 열지 못했어요(${PORT}~${PORT + 9}번 자리가 모두 쓰이는 중). 켜져 있는 다른 검은 창을 닫고 다시 실행해 주세요.`);
   }
   say();
 
@@ -579,6 +591,7 @@ async function main() {
   ac.abort();
   rl.close();
   if (choice.web) console.log(choice.answer === 'y' ? 'y (미리보기에서 "올리기"를 눌렀어요)' : 'n (미리보기에서 "올리지 않기"를 눌렀어요)');
+  logLine(`고른 것: ${choice.answer} (${choice.web ? '미리보기' : '검은 창'})`);
   const yes = choice.answer === 'y' || choice.answer === 'ㅛ';
 
   // 여기부터는 브라우저 미리보기에도 진행 상황을 보여줌
@@ -669,4 +682,5 @@ async function main() {
 main().catch((e) => {
   say();
   say('문제가 생겼어요: ' + (e?.message || e));
+  logLine(String(e?.stack || ''));
 });
