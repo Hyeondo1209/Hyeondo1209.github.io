@@ -24,6 +24,10 @@ const { Content } = await render(note);
 const AGE_YEARS = 4;
 // 글 페이지에서는 보고서 제목이 그 페이지의 맨 위 제목(h1). 첫 화면에서는 여러 보고서 중 하나라 h2
 const Title = mode === 'full' ? 'h1' : 'h2';
+// 호치키스: 실사 스캔 5개 중 하나 (글마다 다르지만 매번 같은 것)
+let h = 0;
+for (const ch of note.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+const staple = h % 5;
 const age = Math.min(1, Math.max(0, (Date.now() - date.getTime()) / (AGE_YEARS * 365.25 * 864e5)));
 ---
 <article
@@ -32,6 +36,7 @@ const age = Math.min(1, Math.max(0, (Date.now() - date.getTime()) / (AGE_YEARS *
   lang={lang}
   data-mode={mode}
   data-date={date.toISOString()}
+  data-staple={staple}
   style={`--age:${age.toFixed(3)}`}
 >
   {tags.length > 0 && (

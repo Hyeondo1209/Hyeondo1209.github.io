@@ -269,7 +269,7 @@ function placePeeks(report: HTMLElement, peeks: Array<{ m: Element; page: number
     const h = hash(id + 'peek');
     const el = p.m.cloneNode(true) as HTMLElement;
     el.classList.add('memo--peek');
-    if (el.classList.contains('memo--paper')) el.style.setProperty('--tear', tearEdge(id));
+    skin(el, report.id + id);
     layer.append(el);
     // 종이 밖으로 나온 폭 (포스트잇은 조금 더 나오게 해서 숨지 않게)
     const stick = (el.classList.contains('memo--postit') ? 24 : 12) + (h % 36);
@@ -283,7 +283,7 @@ function placePeeks(report: HTMLElement, peeks: Array<{ m: Element; page: number
     const h = hash(id + 'peek');
     const el = p.m.cloneNode(true) as HTMLElement;
     el.classList.add('memo--peek', 'memo--peek-bottom');
-    if (el.classList.contains('memo--paper')) el.style.setProperty('--tear', tearEdge(id));
+    skin(el, report.id + id);
     layer.append(el);
     const stick = 4 + (h % 28);
     el.style.left = `${Math.round(300 + i * 170 + (h % 50))}px`;
@@ -298,13 +298,9 @@ function hash(s: string) {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return h >>> 0;
 }
-/** 찢은 종이의 윗변: 메모마다 다르지만 매번 같은 모양 */
-function tearEdge(id: string) {
-  let seed = hash(id);
-  const rand = () => ((seed = Math.imul(seed ^ (seed >>> 15), 2246822507) >>> 0) % 1000) / 1000;
-  const pts: string[] = [];
-  for (let x = 0; x <= 100; x += 1.25) pts.push(`${x}% ${(1 + rand() * 7 + (x % 10 === 0 ? 2 : 0)).toFixed(1)}px`);
-  return `polygon(${pts.join(', ')}, 100% 100%, 0% 100%)`;
+/** 찢은 공책 메모마다 실사 스캔 3장 중 하나를 고름. 메모마다 다르지만 매번 같은 것 */
+function skin(el: HTMLElement, key: string) {
+  if (el.classList.contains('memo--paper')) el.dataset.skin = String(hash(key + 'skin') % 3);
 }
 function placeMemos(report: HTMLElement, memos: Element | null) {
   report.querySelector('.report__margin')?.remove();
@@ -327,7 +323,7 @@ function placeMemos(report: HTMLElement, memos: Element | null) {
     const h = hash(id);
     m.style.setProperty('--tilt', `${((h % 7) - 3) * 0.45}deg`);
     m.style.setProperty('--nudge', `${(h >> 3) % 14}px`);
-    if (m.classList.contains('memo--paper')) m.style.setProperty('--tear', tearEdge(id));
+    skin(m, report.id + id);
     layer.append(m);
     const top = Math.max(Number.isFinite(y) ? y : floor, floor);
     m.style.top = `${Math.round(top)}px`;

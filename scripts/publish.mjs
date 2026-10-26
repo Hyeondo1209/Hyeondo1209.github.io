@@ -3,7 +3,7 @@
 // desk 폴더의 "올리기.cmd" 를 더블클릭하면 이 파일이 실행됩니다.
 // ─────────────────────────────────────────────────────────────
 import { readdir, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -370,7 +370,13 @@ const STATUS_TEXT = {
 
 function buildSite() {
   const astro = path.join(ROOT, 'node_modules', 'astro', 'bin', 'astro.mjs');
-  return spawnSync(process.execPath, [astro, 'build'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync(process.execPath, [astro, 'build'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  // 사이트 만들기 기록을 파일로 남김 (문제가 생기면 Claude가 직접 읽을 수 있게. git에는 안 올라감)
+  try {
+    const log = [`${new Date().toISOString()}  종료 코드: ${r.status}${r.error ? '  오류: ' + r.error.message : ''}`, '', r.stdout || '', r.stderr || ''].join('\n');
+    writeFileSync(path.join(ROOT, '사이트 만들기 기록.txt'), log);
+  } catch {}
+  return r;
 }
 
 async function main() {
